@@ -7,7 +7,7 @@ For: Nelson
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
@@ -51,14 +51,26 @@ def get_stock_data(ticker, period="1y"):
         st.error(f"Error fetching {ticker}: {e}")
         return None
 
-def get_current_price(ticker):
-    """Get current price"""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        return info.get('currentPrice', info.get('regularMarketPrice', 0))
-    except:
-        return 0
+def calculate_rsi(prices, length=14):
+    """Calculate RSI manually"""
+    delta = prices.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_ema(prices, length):
+    """Calculate EMA"""
+    return prices.ewm(span=length, adjust=False).mean()
+
+def calculate_macd(prices):
+    """Calculate MACD"""
+    ema12 = calculate_ema(prices, 12)
+    ema26 = calculate_ema(prices, 26)
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    return macd, signal
 
 def calculate_metrics(ticker, qty, avg_cost):
     """Calculate stock metrics"""
@@ -75,18 +87,22 @@ def calculate_metrics(ticker, qty, avg_cost):
     # Calculate weekly change
     week_ago = datetime.now() - timedelta(days=7)
     try:
-        week_price = df[df.index <= week_ago]['Close'].iloc[-1]
-        weekly_change = ((current_price - week_price) / week_price) * 100
+        week_data = df[df.index <= week_ago]
+        if not week_data.empty:
+            week_price = week_data['Close'].iloc[-1]
+            weekly_change = ((current_price - week_price) / week_price) * 100
+        else:
+            weekly_change = 0
     except:
         weekly_change = 0
     
     # Calculate RSI
-    df['RSI'] = ta.rsi(df['Close'], length=14)
-    rsi = df['RSI'].iloc[-1]
+    df['RSI'] = calculate_rsi(df['Close'])
+    rsi = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50
     
     # Calculate MACD
-    df['MACD'] = ta.macd(df['Close'])['MACD_12_26_9']
-    macd_signal = df['MACD'].iloc[-1]
+    macd, signal = calculate_macd(df['Close'])
+    macd_value = macd.iloc[-1] if not pd.isna(macd.iloc[-1]) else 0
     
     return {
         "current_price": current_price,
@@ -96,7 +112,7 @@ def calculate_metrics(ticker, qty, avg_cost):
         "pnl_percent": pnl_percent,
         "weekly_change": weekly_change,
         "rsi": rsi,
-        "macd": macd_signal,
+        "macd": macd_value,
         "52w_high": df['High'].max(),
         "52w_low": df['Low'].min()
     }
@@ -270,47 +286,48 @@ else:
 st.markdown("---")
 st.header("📈 Technical Analysis")
 
-selected_stock = st.selectbox("Select Stock to Analyze", 
-                              [h['Ticker'] for h in holdings_data] if holdings_data else [])
-
-if selected_stock:
-    df = get_stock_data(selected_stock)
-    if df is not None:
-        # RSI Chart
-        df['RSI'] = ta.rsi(df['Close'], length=14)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Price chart
-            fig = go.Figure()
-            fig.add_trace(go.Candlestick(
-                x=df.index,
-                open=df['Open'],
-                high=df['High'],
-                low=df['Low'],
-                close=df['Close'],
-                name='Price'
-            ))
-            fig.update_layout(title=f"{selected_stock} Price", height=300)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            # RSI Chart
-            fig2 = go.Figure()
-            fig2.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple')))
-            fig2.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
-            fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
-            fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
-            st.plotly_chart(fig2, use_container_width=True)
+if holdings_data:
+    selected_stock = st.selectbox("Select Stock to Analyze", 
+                                  [h['Ticker'] for h in holdings_data])
+    
+    if selected_stock:
+        df = get_stock_data(selected_stock)
+        if df is not None:
+            # Calculate RSI
+            df['RSI'] = calculate_rsi(df['Close'])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Price chart
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df['Open'],
+                    high=df['High'],
+                    low=df['Low'],
+                    close=df['Close'],
+                    name='Price'
+                ))
+                fig.update_layout(title=f"{selected_stock} Price", height=300)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # RSI Chart
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple')))
+                fig2.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
+                fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
+                fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
+                st.plotly_chart(fig2, use_container_width=True)
 
 # ============================================
 # Footer
 # ============================================
 st.markdown("---")
-st.markdown("""
+st.markdown(f"""
 ---
-**📅 Last Updated:** {date}  
+**📅 Last Updated:** {datetime.now().strftime("%Y-%m-%d %H:%M")}  
 **🤖 Powered by:** Nova (AI Assistant)  
 **📊 Data:** Yahoo Finance
-""".format(date=datetime.now().strftime("%Y-%m-%d %H:%M")))
+""")
