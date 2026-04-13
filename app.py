@@ -19,22 +19,14 @@ st.set_page_config(
 )
 
 # ============================================
-# CONFIGURATION - Add your stocks here
+# SESSION STATE - Store user stocks
 # ============================================
 
-# Example: US Stocks (Symbol, Quantity, Avg Cost)
-US_STOCKS = {
-    "AAPL": {"qty": 10, "cost": 150.00},
-    "MSFT": {"qty": 5, "cost": 320.00},
-    "GOOGL": {"qty": 2, "cost": 140.00},
-}
+if 'us_stocks' not in st.session_state:
+    st.session_state.us_stocks = {}
 
-# Example: HK Stocks (Symbol in HK format, Quantity, Avg Cost)
-HK_STOCKS = {
-    "0700.HK": {"qty": 100, "cost": 350.00},  # Tencent
-    "9618.HK": {"qty": 50, "cost": 150.00},  # JD.com
-    "0005.HK": {"qty": 30, "cost": 250.00},  # HSBC
-}
+if 'hk_stocks' not in st.session_state:
+    st.session_state.hk_stocks = {}
 
 # ============================================
 # FUNCTIONS
@@ -137,33 +129,87 @@ def get_signal(rsi, macd):
 st.title("📈 Stock Portfolio Tracker")
 st.markdown("**By Nova (AI Assistant) | For Nelson**")
 
-# Sidebar - Add Stocks
-st.sidebar.header("⚙️ Configuration")
+# ============================================
+# SIDEBAR - INPUT FORM
+# ============================================
+
+st.sidebar.header("⚙️ Manage Stocks")
 st.sidebar.markdown("---")
-st.sidebar.subheader("📝 Your Stocks")
 
-# Create tabs for US and HK stocks
-tab1, tab2 = st.tabs(["🇺🇸 US Stocks", "🇭🇰 HK Stocks"])
+# Tab for US and HK stocks
+input_tab1, input_tab2, input_tab3 = st.sidebar.tabs(["🇺🇸 Add US", "🇭🇰 Add HK", "🗑️ Remove"])
 
-with tab1:
-    st.subheader("US Stocks")
-    if US_STOCKS:
-        for ticker, data in US_STOCKS.items():
-            with st.expander(f"{ticker} - {data['qty']} shares @ ${data['cost']}"):
-                st.write(f"Quantity: {data['qty']}")
-                st.write(f"Avg Cost: ${data['cost']}")
+with input_tab1:
+    st.subheader("Add US Stock")
+    with st.form("add_us_stock"):
+        us_ticker = st.text_input("Stock Symbol (e.g., AAPL, MSFT)", key="us_ticker").upper()
+        us_qty = st.number_input("Quantity", min_value=1, value=1)
+        us_cost = st.number_input("Average Cost ($)", min_value=0.01, value=100.00)
+        us_submit = st.form_submit_button("➕ Add US Stock")
+        
+        if us_submit and us_ticker:
+            st.session_state.us_stocks[us_ticker] = {"qty": us_qty, "cost": us_cost}
+            st.success(f"Added {us_ticker}!")
+            st.rerun()
+
+with input_tab2:
+    st.subheader("Add HK Stock")
+    with st.form("add_hk_stock"):
+        hk_ticker = st.text_input("Stock Symbol (e.g., 0700.HK, 9618.HK)", key="hk_ticker").upper()
+        hk_qty = st.number_input("Quantity", min_value=1, value=1)
+        hk_cost = st.number_input("Average Cost ($)", min_value=0.01, value=100.00)
+        hk_submit = st.form_submit_button("➕ Add HK Stock")
+        
+        if hk_submit and hk_ticker:
+            # Ensure HK ticker has .HK suffix
+            if not hk_ticker.endswith('.HK'):
+                hk_ticker = hk_ticker + '.HK'
+            st.session_state.hk_stocks[hk_ticker] = {"qty": hk_qty, "cost": hk_cost}
+            st.success(f"Added {hk_ticker}!")
+            st.rerun()
+
+with input_tab3:
+    st.subheader("Remove Stock")
+    
+    # Combine all stocks for removal
+    all_stocks = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
+    
+    if all_stocks:
+        stock_to_remove = st.selectbox("Select stock to remove", list(all_stocks.keys()))
+        if st.button("🗑️ Remove Selected"):
+            if stock_to_remove in st.session_state.us_stocks:
+                del st.session_state.us_stocks[stock_to_remove]
+            if stock_to_remove in st.session_state.hk_stocks:
+                del st.session_state.hk_stocks[stock_to_remove]
+            st.success(f"Removed {stock_to_remove}!")
+            st.rerun()
     else:
-        st.info("No US stocks added yet")
+        st.info("No stocks to remove")
 
-with tab2:
-    st.subheader("HK Stocks")
-    if HK_STOCKS:
-        for ticker, data in HK_STOCKS.items():
-            with st.expander(f"{ticker} - {data['qty']} shares @ ${data['cost']}"):
-                st.write(f"Quantity: {data['qty']}")
-                st.write(f"Avg Cost: ${data['cost']}")
-    else:
-        st.info("No HK stocks added yet")
+# Show current stocks summary
+st.sidebar.markdown("---")
+st.sidebar.subheader("📊 Current Holdings")
+
+if st.session_state.us_stocks:
+    st.sidebar.write("**US Stocks:**")
+    for ticker, data in st.session_state.us_stocks.items():
+        st.sidebar.write(f"- {ticker}: {data['qty']} @ ${data['cost']}")
+
+if st.session_state.hk_stocks:
+    st.sidebar.write("**HK Stocks:**")
+    for ticker, data in st.session_state.hk_stocks.items():
+        st.sidebar.write(f"- {ticker}: {data['qty']} @ ${data['cost']}")
+
+if not st.session_state.us_stocks and not st.session_state.hk_stocks:
+    st.sidebar.info("No stocks added yet. Use the forms above!")
+
+# ============================================
+# MAIN CONTENT
+# ============================================
+
+# Get stocks from session state
+US_STOCKS = st.session_state.us_stocks
+HK_STOCKS = st.session_state.hk_stocks
 
 # ============================================
 # Portfolio Overview
@@ -218,27 +264,30 @@ for ticker, data in HK_STOCKS.items():
         })
 
 # Summary Cards
-col1, col2, col3, col4 = st.columns(4)
-
-total_pnl = total_value - total_cost
-total_pnl_percent = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
-
-with col1:
-    st.metric("Total Value", f"${total_value:,.2f}")
-with col2:
-    st.metric("Total Cost", f"${total_cost:,.2f}")
-with col3:
-    st.metric("Total P&L", f"${total_pnl:,.2f}", f"{total_pnl_percent:.2f}%")
-with col4:
-    st.metric("Holdings", len(holdings_data))
+if holdings_data:
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_pnl = total_value - total_cost
+    total_pnl_percent = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
+    
+    with col1:
+        st.metric("Total Value", f"${total_value:,.2f}")
+    with col2:
+        st.metric("Total Cost", f"${total_cost:,.2f}")
+    with col3:
+        st.metric("Total P&L", f"${total_pnl:,.2f}", f"{total_pnl_percent:.2f}%")
+    with col4:
+        st.metric("Holdings", len(holdings_data))
+else:
+    st.info("👈 Add stocks using the sidebar to see your portfolio!")
 
 # ============================================
 # Holdings Table
 # ============================================
-st.markdown("---")
-st.header("📊 Holdings Detail")
-
 if holdings_data:
+    st.markdown("---")
+    st.header("📊 Holdings Detail")
+    
     df = pd.DataFrame(holdings_data)
     
     # Format columns
@@ -277,16 +326,13 @@ if holdings_data:
         )])
         fig.update_layout(title="Profit/Loss by Stock")
         st.plotly_chart(fig, use_container_width=True)
-else:
-    st.info("Add stocks to see your portfolio")
-
-# ============================================
-# Technical Analysis
-# ============================================
-st.markdown("---")
-st.header("📈 Technical Analysis")
-
-if holdings_data:
+    
+    # ============================================
+    # Technical Analysis
+    # ============================================
+    st.markdown("---")
+    st.header("📈 Technical Analysis")
+    
     selected_stock = st.selectbox("Select Stock to Analyze", 
                                   [h['Ticker'] for h in holdings_data])
     
