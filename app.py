@@ -191,6 +191,25 @@ else:
         if len(df) > 0:
             fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='組合分配', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
+        
+        # P&L Bar Chart
+        st.write("---")
+        st.subheader("📊 各股票盈虧")
+        
+        if len(df) > 0:
+            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='股票盈虧', 
+                           color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
+            fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['盈虧 (港幣)']]))
+            
+            cost_total = df['盈虧 (港幣)'].sum()
+            if cost_total != 0:
+                fig_bar.add_hline(y=cost_total*0.1, line_dash="dash", line_color="orange", annotation="Loss 10%")
+                fig_bar.add_hline(y=cost_total*0.15, line_dash="dot", line_color="red", annotation="Loss 15%")
+                fig_bar.add_hline(y=cost_total*0.2, line_dash="dot", line_color="darkred", annotation="Loss 20%")
+                fig_bar.add_hline(y=-cost_total*0.1, line_dash="dash", line_color="lightgreen", annotation="Gain 10%")
+                fig_bar.add_hline(y=-cost_total*0.2, line_dash="dot", line_color="green", annotation="Gain 20%")
+            
+            st.plotly_chart(fig_bar, use_container_width=True)
 
     # Historical
     st.header("📊 每月價值明細 (2026)")
