@@ -1,5 +1,5 @@
 """
-Stock Portfolio - With enhanced columns
+Stock Portfolio with Historical Tracking
 """
 import streamlit as st
 import yfinance as yf
@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import os
 import plotly.express as px
+from datetime import datetime
 
 URL = os.environ.get("SUPABASE_URL", "")
 KEY = os.environ.get("SUPABASE_KEY", "")
@@ -106,15 +107,20 @@ else:
     for t, d in st.session_state.us_stocks.items(): st.sidebar.write(f"📈 {t}: {d['qty']}")
     for t, d in st.session_state.hk_stocks.items(): st.sidebar.write(f"📈 {t}: {d['qty']}")
 
-    # Portfolio
-    st.header("💼 Portfolio")
+    # Current Portfolio
+    st.header("💼 Portfolio (Current)")
     rows, total_val, total_cost = [], 0, 0
     
     for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
-            company = info.get('longName', info.get('shortName', ticker))[:30]
+            
+            # Try to get Chinese name
+            if ticker.endswith('.HK'):
+                company = info.get('longName', ticker)[:30]
+            else:
+                company = info.get('longName', info.get('shortName', ticker))[:30]
             
             price = stock.history(period="1d")['Close'].iloc[-1]
             if price:
@@ -123,7 +129,7 @@ else:
                 pnl = val - cost
                 pct = (pnl/cost*100) if cost else 0
                 
-                # RSI calculation
+                # RSI
                 hist = stock.history(period="3mo")['Close']
                 delta = hist.diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean()
@@ -132,7 +138,6 @@ else:
                 rsi_val = (100 - (100 / (1 + rs))).iloc[-1]
                 if pd.isna(rsi_val): rsi_val = 50
                 
-                # Signal
                 if rsi_val < 30: signal = "🟢 BUY"
                 elif rsi_val > 70: signal = "🔴 SELL"
                 else: signal = "🟡 HOLD"
@@ -160,7 +165,6 @@ else:
         c2.metric("Cost", f"HKD {total_cost:,.0f}")
         c3.metric("P&L", f"HKD {total_val-total_cost:,.0f}")
         
-        # Table - no HKD in data cells
         st.dataframe(df.style.format({
             "Cost (HKD)": "{:.2f}", 
             "Price (HKD)": "{:.2f}", 
@@ -170,9 +174,47 @@ else:
             "RSI": "{:.0f}"
         }), use_container_width=True)
         
-        # Pie chart
         if len(df) > 0:
             fig = px.pie(df, values='Value (HKD)', names='Symbol', title='Allocation', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("No stocks")
+
+    # Historical Portfolio
+    st.header("📊 Monthly Portfolio Value (2026)")
+    
+    # Months to check
+    months = ["2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"]
+    month_labels = ["Jan 2026", "Feb 2026", "Mar 2026", "Apr 2026"]
+    
+    hist_rows = []
+    
+    for i, (month_end, label) in enumerate(zip(months, month_labels)):
+        month_val = 0
+        month_data = {}
+        
+        for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
+            try:
+                stock = yf.Ticker(ticker)
+                # Get price at month end
+                hist = stock.history(start="2026-01-01", end=month_end)
+                if not hist.empty:
+                    # Get the last price of the month
+                    month_price = hist['Close'].iloc[-1]
+                    month_val += d['qty'] * month_price
+                    month_data[ticker] = month_price
+            except:
+                pass
+        
+        hist_rows.append({"Month": label, "Total Value (HKD)": month_val})
+    
+    if hist_rows:
+        hist_df = pd.DataFrame(hist_rows)
+        st.dataframe(hist_df.style.format({"Total Value (HKD)": "HKD {:,.0f}"}), use_container_width=True)
+        
+        # Line chart
+        fig_line = px.line(hist_df, x='Month', y='Total Value (HKD)', title='Portfolio Value Trend', markers=True)
+        fig_line.update_traces(line_color='green', marker=dict(color='blue', size=10))
+        st.plotly_chart(fig_line, use_container_width=True)
+    else:
+        st.info("No historical data")
