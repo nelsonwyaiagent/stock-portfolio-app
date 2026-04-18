@@ -1,27 +1,39 @@
 """
-Stock Portfolio - Debug version
+Stock Portfolio - Using environment variables
 """
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 import json
+import os
 
-# CORRECT Supabase credentials from earlier test
-URL = "https://wnvpmiaxjsvlbqjbvjim.supabase.co"
-# Using the key that WORKED in curl
-KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudnBtaWF4anN2bGJRamJ2amltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImluc3RhbmNlIjoiMTIzNDU2IiwiaWF0IjoxNjQyMDAwMDAwLCJleHAiOjE5NTc1NzYwMDAwfQ.pWhDRIGhSg0YdVTvXywz6J5JzX5J5J5J5J5J5J5J5J"
+# Get from environment
+URL = os.environ.get("SUPABASE_URL", "https://wnvpmiaxjsvlbqjbvjim.supabase.co")
+KEY = os.environ.get("SUPABASE_KEY", "")
 
-print(f"Testing with URL: {URL}")
+print(f"URL from env: {URL}")
+print(f"KEY from env: {KEY[:20] if KEY else 'NOT SET'}...")
+
+# Try to get from Streamlit secrets
+try:
+    URL = st.secrets.get("SUPABASE_URL", URL)
+    KEY = st.secrets.get("SUPABASE_KEY", KEY)
+except:
+    pass
+
+print(f"Final URL: {URL}")
+print(f"Final KEY: {KEY[:20] if KEY else 'NOT SET'}...")
 
 supabase = None
-try:
-    from supabase import create_client
-    supabase = create_client(URL, KEY)
-    print("Supabase connected successfully!")
-except Exception as e:
-    print(f"Connection error: {e}")
+if KEY:
+    try:
+        from supabase import create_client
+        supabase = create_client(URL, KEY)
+        print("Supabase connected!")
+    except Exception as e:
+        print(f"Error: {e}")
 
-# Test query function
+# Test function
 def test_db():
     if supabase:
         try:
@@ -29,7 +41,7 @@ def test_db():
             return r.data
         except Exception as e:
             return [{"error": str(e)}]
-    return [{"error": "No supabase"}]
+    return [{"error": "No supabase client"}]
 
 # Session
 for k in ['logged_in','username','us_stocks','hk_stocks']:
@@ -38,10 +50,14 @@ for k in ['logged_in','username','us_stocks','hk_stocks']:
 
 st.title("📈 Stock Portfolio")
 
-# Debug button
+st.write("Supabase URL:", URL)
+st.write("Has Key:", "Yes" if KEY else "No")
+st.write("Has Supabase:", "Yes" if supabase else "No")
+
+# Test button
 if st.button("🔍 Test DB"):
     data = test_db()
-    st.write("Database says:", data)
+    st.write("DB result:", data)
 
 # Login
 if not st.session_state.logged_in:
@@ -49,51 +65,23 @@ if not st.session_state.logged_in:
     with st.form("login"):
         user = st.text_input("Username")
         if st.form_submit_button("Login"):
-            if user:
-                st.session_state.username = user
-                st.session_state.logged_in = True
-                # Try to load
-                if supabase:
-                    try:
-                        r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', user).execute()
-                        st.write("Query result:", r.data)
-                        if r.data and len(r.data) > 0:
-                            us = r.data[0].get('us_stocks', '{}')
-                            hk = r.data[0].get('hk_stocks', '{}')
-                            st.session_state.us_stocks = json.loads(us) if us else {}
-                            st.session_state.hk_stocks = json.loads(hk) if hk else {}
-                            st.success(f"Loaded {len(st.session_state.us_stocks)} US, {len(st.session_state.hk_stocks)} HK!")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
-                st.rerun()
+            if user and supabase:
+                try:
+                    r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', user).execute()
+                    if r.data and len(r.data) > 0:
+                        st.session_state.us_stocks = json.loads(r.data[0].get('us_stocks','{}'))
+                        st.session_state.hk_stocks = json.loads(r.data[0].get('hk_stocks','{}'))
+                        st.session_state.username = user
+                        st.session_state.logged_in = True
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
 
-else:
-    st.write(f"**Logged in: {st.session_state.username}**")
-    
-    # Manual load
-    if st.button("📥 Load"):
-        if supabase:
-            try:
-                r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', st.session_state.username).execute()
-                if r.data and len(r.data) > 0:
-                    us = r.data[0].get('us_stocks', '{}')
-                    hk = r.data[0].get('hk_stocks', '{}')
-                    st.session_state.us_stocks = json.loads(us) if us else {}
-                    st.session_state.hk_stocks = json.loads(hk) if hk else {}
-                    st.success("Loaded!")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Error: {e}")
-
+if st.session_state.logged_in:
+    st.write(f"**{st.session_state.username}**")
     if st.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
-
-    # Show stocks
-    st.header("💼 Stocks")
-    all_stocks = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
-    if all_stocks:
-        for t, d in all_stocks.items():
-            st.write(f"- {t}: {d['qty']} @ ${d['cost']}")
-    else:
-        st.info("No stocks yet!")
+    
+    st.write("US:", st.session_state.us_stocks)
+    st.write("HK:", st.session_state.hk_stocks)
