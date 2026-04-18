@@ -16,6 +16,27 @@ try:
 except:
     supabase = None
 
+# Functions - defined FIRST
+def load_data(username):
+    if not supabase:
+        return {}, {}
+    try:
+        r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', username).execute()
+        if r.data and len(r.data) > 0:
+            us = r.data[0].get('us_stocks', '{}')
+            hk = r.data[0].get('hk_stocks', '{}')
+            return json.loads(us) if isinstance(us, str) else us, json.loads(hk) if isinstance(hk, str) else hk
+    except Exception as e:
+        print(f"Load error: {e}")
+    return {}, {}
+
+def save_data(username, us, hk):
+    if supabase:
+        try:
+            supabase.table('portfolios').update({'us_stocks': json.dumps(us), 'hk_stocks': json.dumps(hk)}).eq('username', username).execute()
+        except:
+            pass
+
 # Session
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
@@ -32,7 +53,6 @@ if not st.session_state.logged_in:
             if user:
                 st.session_state.username = user
                 st.session_state.logged_in = True
-                # Auto load on login
                 us, hk = load_data(user)
                 st.session_state.us_stocks = us
                 st.session_state.hk_stocks = hk
@@ -128,24 +148,3 @@ else:
         st.dataframe(pd.DataFrame(rows).style.format({"Cost":"${:.2f}","Price":"${:.2f}","Value":"${:.2f}","P&L":"${:.2f}"}))
     else:
         st.info("Add stocks to see portfolio!")
-
-# Functions
-def load_data(username):
-    if not supabase:
-        return {}, {}
-    try:
-        r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', username).execute()
-        if r.data:
-            us = r.data[0]['us_stocks']
-            hk = r.data[0]['hk_stocks']
-            return json.loads(us) if isinstance(us, str) else us, json.loads(hk) if isinstance(hk, str) else hk
-    except Exception as e:
-        st.error(f"Load error: {e}")
-    return {}, {}
-
-def save_data(username, us, hk):
-    if supabase:
-        try:
-            supabase.table('portfolios').update({'us_stocks': json.dumps(us), 'hk_stocks': json.dumps(hk)}).eq('username', username).execute()
-        except:
-            pass
