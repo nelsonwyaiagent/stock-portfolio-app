@@ -1,5 +1,5 @@
 """
-Stock Portfolio Monitor App
+Stock Portfolio Monitor App with Supabase
 Author: Nova (AI Assistant)
 For: Nelson
 """
@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import json
+import os
 
 # Page Config
 st.set_page_config(
@@ -19,8 +21,38 @@ st.set_page_config(
 )
 
 # ============================================
-# SESSION STATE - Store user stocks
+# SUPABASE - Load from Streamlit Secrets
 # ============================================
+
+# Check for Streamlit secrets first, then environment
+try:
+    supabase_url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))
+    supabase_key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY", ""))
+except:
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_KEY", "")
+
+# Initialize Supabase if available
+supabase_client = None
+if supabase_url and supabase_key:
+    try:
+        from supabase import create_client
+        supabase_client = create_client(supabase_url, supabase_key)
+    except:
+        pass
+
+# ============================================
+# SESSION STATE
+# ============================================
+
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = None
+
+if 'username' not in st.session_state:
+    st.session_state.username = ""
 
 if 'us_stocks' not in st.session_state:
     st.session_state.us_stocks = {}
@@ -34,38 +66,25 @@ if 'hk_stocks' not in st.session_state:
 
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker, period="1y"):
-    """Fetch stock data from Yahoo Finance"""
     try:
         stock = yf.Ticker(ticker)
-        df = stock.history(period=period)
-        return df
-    except Exception as e:
-        st.error(f"Error fetching {ticker}: {e}")
+        return stock.history(period=period)
+    except:
         return None
 
 def calculate_rsi(prices, length=14):
-    """Calculate RSI manually"""
     delta = prices.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=length).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-def calculate_ema(prices, length):
-    """Calculate EMA"""
-    return prices.ewm(span=length, adjust=False).mean()
+    return 100 - (100 / (1 + rs))
 
 def calculate_macd(prices):
-    """Calculate MACD"""
-    ema12 = calculate_ema(prices, 12)
-    ema26 = calculate_ema(prices, 26)
-    macd = ema12 - ema26
-    signal = macd.ewm(span=9, adjust=False).mean()
-    return macd, signal
+    ema12 = prices.ewm(span=12, adjust=False).mean()
+    ema26 = prices.ewm(span=26, adjust=False).mean()
+    return ema12 - ema26
 
 def calculate_metrics(ticker, qty, avg_cost):
-    """Calculate stock metrics"""
     df = get_stock_data(ticker)
     if df is None or df.empty:
         return None
@@ -76,25 +95,24 @@ def calculate_metrics(ticker, qty, avg_cost):
     pnl = current_value - cost_basis
     pnl_percent = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
     
-    # Calculate weekly change
+    # Weekly change
     week_ago = datetime.now() - timedelta(days=7)
     try:
         week_data = df[df.index <= week_ago]
-        if not week_data.empty:
-            week_price = week_data['Close'].iloc[-1]
-            weekly_change = ((current_price - week_price) / week_price) * 100
-        else:
-            weekly_change = 0
+        week_price = week_data['Close'].iloc[-1] if not week_data.empty else current_price
+        weekly_change = ((current_price - week_price) / week_price) * 100
     except:
         weekly_change = 0
     
-    # Calculate RSI
-    df['RSI'] = calculate_rsi(df['Close'])
-    rsi = df['RSI'].iloc[-1] if not pd.isna(df['RSI'].iloc[-1]) else 50
+    # RSI
+    rsi = calculate_rsi(df['Close']).iloc[-1]
+    if pd.isna(rsi):
+        rsi = 50
     
-    # Calculate MACD
-    macd, signal = calculate_macd(df['Close'])
-    macd_value = macd.iloc[-1] if not pd.isna(macd.iloc[-1]) else 0
+    # MACD
+    macd_value = calculate_macd(df['Close']).iloc[-1]
+    if pd.isna(macd_value):
+        macd_value = 0
     
     return {
         "current_price": current_price,
@@ -104,13 +122,10 @@ def calculate_metrics(ticker, qty, avg_cost):
         "pnl_percent": pnl_percent,
         "weekly_change": weekly_change,
         "rsi": rsi,
-        "macd": macd_value,
-        "52w_high": df['High'].max(),
-        "52w_low": df['Low'].min()
+        "macd": macd_value
     }
 
 def get_signal(rsi, macd):
-    """Generate buy/sell signal"""
     if rsi < 30 and macd > 0:
         return "STRONG BUY", "🟢"
     elif rsi < 40 and macd > 0:
@@ -119,261 +134,173 @@ def get_signal(rsi, macd):
         return "SELL", "🔴"
     elif rsi > 60:
         return "WATCH", "🟡"
-    else:
-        return "HOLD", "🟡"
+    return "HOLD", "🟡"
+
+# ============================================
+# SUPABASE FUNCTIONS
+# ============================================
+
+def save_portfolio(user_id, username, us_stocks, hk_stocks):
+    if not supabase_client:
+        return False
+    try:
+        response = supabase_client.table('portfolios').update({
+            'username': username,
+            'us_stocks': json.dumps(us_stocks),
+            'hk_stocks': json.dumps(hk_stocks)
+        }).eq('id', user_id).execute()
+        
+        if not response.data:
+            supabase_client.table('portfolios').insert({
+                'id': user_id,
+                'username': username,
+                'us_stocks': json.dumps(us_stocks),
+                'hk_stocks': json.dumps(hk_stocks)
+            }).execute()
+        return True
+    except:
+        return False
+
+def load_portfolio(user_id):
+    if not supabase_client:
+        return {}, {}
+    try:
+        response = supabase_client.table('portfolios').select('*').eq('id', user_id).execute()
+        if response.data:
+            data = response.data[0]
+            return json.loads(data.get('us_stocks', '{}')), json.loads(data.get('hk_stocks', '{}'))
+    except:
+        pass
+    return {}, {}
+
+def login(username):
+    st.session_state.logged_in = True
+    st.session_state.username = username
+    st.session_state.user_id = username
+    us, hk = load_portfolio(username)
+    st.session_state.us_stocks = us if us else {}
+    st.session_state.hk_stocks = hk if hk else {}
+
+def logout():
+    if st.session_state.logged_in:
+        save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+    st.session_state.logged_in = False
+    st.session_state.user_id = None
+    st.session_state.username = ""
+    st.session_state.us_stocks = {}
+    st.session_state.hk_stocks = {}
 
 # ============================================
 # MAIN APP
 # ============================================
 
 st.title("📈 Stock Portfolio Tracker")
-st.markdown("**By Nova (AI Assistant) | For Nelson**")
+st.markdown("**By Nova (AI Assistant)**")
 
-# ============================================
-# SIDEBAR - INPUT FORM
-# ============================================
-
-st.sidebar.header("⚙️ Manage Stocks")
-st.sidebar.markdown("---")
-
-# Tab for US and HK stocks
-input_tab1, input_tab2, input_tab3 = st.sidebar.tabs(["🇺🇸 Add US", "🇭🇰 Add HK", "🗑️ Remove"])
-
-with input_tab1:
-    st.subheader("Add US Stock")
-    with st.form("add_us_stock"):
-        us_ticker = st.text_input("Stock Symbol (e.g., AAPL, MSFT)", key="us_ticker").upper()
-        us_qty = st.number_input("Quantity", min_value=1, value=1)
-        us_cost = st.number_input("Average Cost ($)", min_value=0.01, value=100.00)
-        us_submit = st.form_submit_button("➕ Add US Stock")
-        
-        if us_submit and us_ticker:
-            st.session_state.us_stocks[us_ticker] = {"qty": us_qty, "cost": us_cost}
-            st.success(f"Added {us_ticker}!")
+if not st.session_state.logged_in:
+    st.markdown("---")
+    st.header("🔐 Login / Sign Up")
+    with st.form("login"):
+        username = st.text_input("Username")
+        if st.form_submit_button("Login / Sign Up") and username:
+            login(username)
             st.rerun()
 
-with input_tab2:
-    st.subheader("Add HK Stock")
-    with st.form("add_hk_stock"):
-        hk_ticker = st.text_input("Stock Symbol (e.g., 0700.HK, 9618.HK)", key="hk_ticker").upper()
-        hk_qty = st.number_input("Quantity", min_value=1, value=1)
-        hk_cost = st.number_input("Average Cost ($)", min_value=0.01, value=100.00)
-        hk_submit = st.form_submit_button("➕ Add HK Stock")
-        
-        if hk_submit and hk_ticker:
-            # Ensure HK ticker has .HK suffix
-            if not hk_ticker.endswith('.HK'):
-                hk_ticker = hk_ticker + '.HK'
-            st.session_state.hk_stocks[hk_ticker] = {"qty": hk_qty, "cost": hk_cost}
-            st.success(f"Added {hk_ticker}!")
-            st.rerun()
-
-with input_tab3:
-    st.subheader("Remove Stock")
-    
-    # Combine all stocks for removal
-    all_stocks = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
-    
-    if all_stocks:
-        stock_to_remove = st.selectbox("Select stock to remove", list(all_stocks.keys()))
-        if st.button("🗑️ Remove Selected"):
-            if stock_to_remove in st.session_state.us_stocks:
-                del st.session_state.us_stocks[stock_to_remove]
-            if stock_to_remove in st.session_state.hk_stocks:
-                del st.session_state.hk_stocks[stock_to_remove]
-            st.success(f"Removed {stock_to_remove}!")
-            st.rerun()
-    else:
-        st.info("No stocks to remove")
-
-# Show current stocks summary
-st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Current Holdings")
-
-if st.session_state.us_stocks:
-    st.sidebar.write("**US Stocks:**")
-    for ticker, data in st.session_state.us_stocks.items():
-        st.sidebar.write(f"- {ticker}: {data['qty']} @ ${data['cost']}")
-
-if st.session_state.hk_stocks:
-    st.sidebar.write("**HK Stocks:**")
-    for ticker, data in st.session_state.hk_stocks.items():
-        st.sidebar.write(f"- {ticker}: {data['qty']} @ ${data['cost']}")
-
-if not st.session_state.us_stocks and not st.session_state.hk_stocks:
-    st.sidebar.info("No stocks added yet. Use the forms above!")
-
-# ============================================
-# MAIN CONTENT
-# ============================================
-
-# Get stocks from session state
-US_STOCKS = st.session_state.us_stocks
-HK_STOCKS = st.session_state.hk_stocks
-
-# ============================================
-# Portfolio Overview
-# ============================================
-st.markdown("---")
-st.header("💼 Portfolio Overview")
-
-total_value = 0
-total_cost = 0
-holdings_data = []
-
-# Process US Stocks
-for ticker, data in US_STOCKS.items():
-    metrics = calculate_metrics(ticker, data['qty'], data['cost'])
-    if metrics:
-        total_value += metrics['current_value']
-        total_cost += metrics['cost_basis']
-        signal, emoji = get_signal(metrics['rsi'], metrics['macd'])
-        holdings_data.append({
-            "Ticker": ticker,
-            "Type": "US",
-            "Qty": data['qty'],
-            "Avg Cost": data['cost'],
-            "Current Price": metrics['current_price'],
-            "Value": metrics['current_value'],
-            "P&L": metrics['pnl'],
-            "P&L %": metrics['pnl_percent'],
-            "Weekly %": metrics['weekly_change'],
-            "RSI": metrics['rsi'],
-            "Signal": f"{emoji} {signal}"
-        })
-
-# Process HK Stocks
-for ticker, data in HK_STOCKS.items():
-    metrics = calculate_metrics(ticker, data['qty'], data['cost'])
-    if metrics:
-        total_value += metrics['current_value']
-        total_cost += metrics['cost_basis']
-        signal, emoji = get_signal(metrics['rsi'], metrics['macd'])
-        holdings_data.append({
-            "Ticker": ticker,
-            "Type": "HK",
-            "Qty": data['qty'],
-            "Avg Cost": data['cost'],
-            "Current Price": metrics['current_price'],
-            "Value": metrics['current_value'],
-            "P&L": metrics['pnl'],
-            "P&L %": metrics['pnl_percent'],
-            "Weekly %": metrics['weekly_change'],
-            "RSI": metrics['rsi'],
-            "Signal": f"{emoji} {signal}"
-        })
-
-# Summary Cards
-if holdings_data:
-    col1, col2, col3, col4 = st.columns(4)
-    
-    total_pnl = total_value - total_cost
-    total_pnl_percent = (total_pnl / total_cost) * 100 if total_cost > 0 else 0
-    
-    with col1:
-        st.metric("Total Value", f"${total_value:,.2f}")
-    with col2:
-        st.metric("Total Cost", f"${total_cost:,.2f}")
-    with col3:
-        st.metric("Total P&L", f"${total_pnl:,.2f}", f"{total_pnl_percent:.2f}%")
-    with col4:
-        st.metric("Holdings", len(holdings_data))
 else:
-    st.info("👈 Add stocks using the sidebar to see your portfolio!")
-
-# ============================================
-# Holdings Table
-# ============================================
-if holdings_data:
-    st.markdown("---")
-    st.header("📊 Holdings Detail")
+    st.markdown(f"**Welcome, {st.session_state.username}!**")
     
-    df = pd.DataFrame(holdings_data)
-    
-    # Format columns
-    st.dataframe(
-        df.style.format({
-            "Avg Cost": "${:.2f}",
-            "Current Price": "${:.2f}",
-            "Value": "${:.2f}",
-            "P&L": "${:.2f}",
-            "P&L %": "{:.2f}%",
-            "Weekly %": "{:.2f}%",
-            "RSI": "{:.2f}"
-        }),
-        use_container_width=True
-    )
-    
-    # Charts
-    col1, col2 = st.columns(2)
-    
+    col1, col2 = st.columns([6, 1])
     with col1:
-        # Pie chart - Allocation
-        fig = go.Figure(data=[go.Pie(
-            labels=df['Ticker'],
-            values=df['Value'],
-            hole=0.4
-        )])
-        fig.update_layout(title="Portfolio Allocation")
-        st.plotly_chart(fig, use_container_width=True)
-    
+        if st.button("💾 Save to Cloud"):
+            if save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks):
+                st.success("Saved!")
+            else:
+                st.warning("Save failed - configure Supabase in Streamlit secrets")
     with col2:
-        # Bar chart - P&L
-        fig = go.Figure(data=[go.Bar(
-            x=df['Ticker'],
-            y=df['P&L'],
-            marker_color=['green' if x > 0 else 'red' for x in df['P&L']]
-        )])
-        fig.update_layout(title="Profit/Loss by Stock")
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # ============================================
-    # Technical Analysis
-    # ============================================
-    st.markdown("---")
-    st.header("📈 Technical Analysis")
-    
-    selected_stock = st.selectbox("Select Stock to Analyze", 
-                                  [h['Ticker'] for h in holdings_data])
-    
-    if selected_stock:
-        df = get_stock_data(selected_stock)
-        if df is not None:
-            # Calculate RSI
-            df['RSI'] = calculate_rsi(df['Close'])
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                # Price chart
-                fig = go.Figure()
-                fig.add_trace(go.Candlestick(
-                    x=df.index,
-                    open=df['Open'],
-                    high=df['High'],
-                    low=df['Low'],
-                    close=df['Close'],
-                    name='Price'
-                ))
-                fig.update_layout(title=f"{selected_stock} Price", height=300)
-                st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                # RSI Chart
-                fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple')))
-                fig2.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
-                fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
-                fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
-                st.plotly_chart(fig2, use_container_width=True)
+        if st.button("Logout"):
+            logout()
+            st.rerun()
 
-# ============================================
-# Footer
-# ============================================
-st.markdown("---")
-st.markdown(f"""
----
-**📅 Last Updated:** {datetime.now().strftime("%Y-%m-%d %H:%M")}  
-**🤖 Powered by:** Nova (AI Assistant)  
-**📊 Data:** Yahoo Finance
-""")
+    # Sidebar
+    st.sidebar.header("⚙️ Manage Stocks")
+    
+    tab1, tab2, tab3 = st.sidebar.tabs(["🇺🇸 Add US", "🇭🇰 Add HK", "🗑️ Remove"])
+    
+    with tab1:
+        with st.form("add_us"):
+            ticker = st.text_input("Symbol (e.g. AAPL)", key="us").upper()
+            qty = st.number_input("Qty", min_value=1, value=1)
+            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00)
+            if st.form_submit_button("➕ Add") and ticker:
+                st.session_state.us_stocks[ticker] = {"qty": qty, "cost": cost}
+                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                st.rerun()
+
+    with tab2:
+        with st.form("add_hk"):
+            ticker = st.text_input("Symbol (e.g. 0700.HK)", key="hk").upper()
+            qty = st.number_input("Qty", min_value=1, value=1)
+            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00)
+            if st.form_submit_button("➕ Add") and ticker:
+                if not ticker.endswith('.HK'):
+                    ticker = ticker + '.HK'
+                st.session_state.hk_stocks[ticker] = {"qty": qty, "cost": cost}
+                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                st.rerun()
+
+    with tab3:
+        all_stocks = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
+        if all_stocks:
+            remove = st.selectbox("Remove", list(all_stocks.keys()))
+            if st.button("🗑️ Remove"):
+                if remove in st.session_state.us_stocks:
+                    del st.session_state.us_stocks[remove]
+                if remove in st.session_state.hk_stocks:
+                    del st.session_state.hk_stocks[remove]
+                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                st.rerun()
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📊 Holdings")
+    for t, d in st.session_state.us_stocks.items():
+        st.sidebar.write(f"- {t}: {d['qty']} @ ${d['cost']}")
+    for t, d in st.session_state.hk_stocks.items():
+        st.sidebar.write(f"- {t}: {d['qty']} @ ${d['cost']}")
+
+    # Portfolio Overview
+    st.markdown("---")
+    st.header("💼 Portfolio Overview")
+    
+    total_value = 0
+    total_cost = 0
+    holdings = []
+    
+    for ticker, data in st.session_state.us_stocks.items():
+        m = calculate_metrics(ticker, data['qty'], data['cost'])
+        if m:
+            total_value += m['current_value']
+            total_cost += m['cost_basis']
+            sig, emoji = get_signal(m['rsi'], m['macd'])
+            holdings.append({**data, "ticker": ticker, "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
+
+    for ticker, data in st.session_state.hk_stocks.items():
+        m = calculate_metrics(ticker, data['qty'], data['cost'])
+        if m:
+            total_value += m['current_value']
+            total_cost += m['cost_basis']
+            sig, emoji = get_signal(m['rsi'], m['macd'])
+            holdings.append({**data, "ticker": ticker, "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
+
+    if holdings:
+        col1, col2, col3, col4 = st.columns(4)
+        pnl = total_value - total_cost
+        pnl_pct = (pnl / total_cost) * 100 if total_cost > 0 else 0
+        col1.metric("Value", f"${total_value:,.2f}")
+        col2.metric("Cost", f"${total_cost:,.2f}")
+        col3.metric("P&L", f"${pnl:,.2f}", f"{pnl_pct:.2f}%")
+        col4.metric("Holdings", len(holdings))
+
+        st.markdown("---")
+        st.header("📊 Holdings")
+        df = pd.DataFrame(holdings)
+        st.dataframe(df[["ticker", "qty", "price", "value", "pnl", "rsi", "signal"]].style.format({"price": "${:.2f}", "value": "${:.2f}", "pnl": "${:.2f}", "rsi": "{:.1f}"}), use_container_width=True)
