@@ -1,5 +1,5 @@
 """
-Stock Portfolio - Chinese Company Names
+Stock Portfolio - Chinese Company Names for HK stocks
 """
 import streamlit as st
 import yfinance as yf
@@ -28,6 +28,45 @@ if KEY:
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
         st.session_state[k] = {} if k in ['us_stocks','hk_stocks'] else False
+
+# Map of common HK stocks to Chinese names
+HK_STOCK_NAMES = {
+    "0700.HK": "騰訊控股",
+    "9988.HK": "阿里巴巴",
+    "1810.HK": "小米集團",
+    "9618.HK": "京東集團",
+    "1024.HK": "快手科技",
+    "0880.HK": "中國平安",
+    "3382.HK": "海爾智家",
+    "6690.HK": "海爾智家",
+    "0005.HK": "匯豐控股",
+    "1299.HK": "友邦保險",
+    "0941.HK": "中國移動",
+    "2318.HK": "中國平安",
+    "2628.HK": "中國人壽",
+    "1398.HK": "工商銀行",
+    "3988.HK": "中國銀行",
+    "0001.HK": "長江實業",
+}
+
+def get_chinese_name(ticker):
+    """Get Chinese company name for HK stocks"""
+    # First check our map
+    if ticker in HK_STOCK_NAMES:
+        return HK_STOCK_NAMES[ticker]
+    
+    # Try Yahoo Finance
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        # For HK stocks, try longName (usually Chinese)
+        name = info.get('longName', info.get('shortName', ticker))
+        if name:
+            return name[:25]
+    except:
+        pass
+    
+    return ticker
 
 st.title("📈 股票組合")
 
@@ -75,7 +114,6 @@ else:
     with col3:
         if st.button("登出"): st.session_state.logged_in = False; st.rerun()
 
-    # Sidebar
     st.sidebar.header("⚙️ 添加股票")
     with st.sidebar.form("add_us"):
         t = st.text_input("美股").upper()
@@ -112,12 +150,8 @@ else:
     
     for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
         try:
+            company = get_chinese_name(ticker)
             stock = yf.Ticker(ticker)
-            info = stock.info
-            
-            # For HK stocks, try to get Chinese name
-            company = info.get('longName', info.get('shortName', ticker))[:25]
-            
             price = stock.history(period="1d")['Close'].iloc[-1]
             if price:
                 val = d['qty'] * price
@@ -158,7 +192,7 @@ else:
             fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='組合分配', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
 
-    # Historical Breakdown
+    # Historical
     st.header("📊 每月價值明細 (2026)")
     
     months = [("2026-01-31", "1月"), ("2026-02-28", "2月"), ("2026-03-31", "3月"), ("2026-04-30", "4月")]
@@ -166,17 +200,15 @@ else:
     hist_rows = []
     for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            company = info.get('longName', info.get('shortName', ticker))[:20]
-            
-            current_price = stock.history(period="1d")['Close'].iloc[-1]
+            company = get_chinese_name(ticker)
+            current_price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
             current_val = d['qty'] * current_price
             
             row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值 (港幣)": current_val}
             
             for month_end, label in months:
                 try:
+                    stock = yf.Ticker(ticker)
                     hist = stock.history(start="2026-01-01", end=month_end)
                     if not hist.empty:
                         month_price = hist['Close'].iloc[-1]
@@ -207,7 +239,6 @@ else:
         
         st.dataframe(hist_df.style.format(fmt_dict), use_container_width=True)
         
-        # Line chart
         total_by_month = {}
         for month_end, label in months:
             total = 0
@@ -217,8 +248,7 @@ else:
                     hist = stock.history(start="2026-01-01", end=month_end)
                     if not hist.empty:
                         total += d['qty'] * hist['Close'].iloc[-1]
-                except:
-                    pass
+                except: pass
             total_by_month[label] = total
         
         chart_df = pd.DataFrame(list(total_by_month.items()), columns=["月份", "總值 (港幣)"])
