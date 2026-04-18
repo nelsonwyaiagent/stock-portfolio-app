@@ -204,7 +204,7 @@ else:
             current_price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
             current_val = d['qty'] * current_price
             
-            row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值 (港幣)": current_val}
+            row = {"股票代號": ticker, "公司名稱": company, "數量": d["qty"], "現值 (港幣)": round(current_val)}
             
             for month_end, label in months:
                 try:
