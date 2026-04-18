@@ -1,5 +1,5 @@
 """
-Stock Portfolio - Simple and Working
+Stock Portfolio - With enhanced columns
 """
 import streamlit as st
 import yfinance as yf
@@ -45,7 +45,7 @@ if not st.session_state.logged_in:
                         st.session_state.hk_stocks = json.loads(r.data[0].get('hk_stocks','{}'))
                     st.session_state.username = user
                     st.session_state.logged_in = True
-                    st.success(f"Loaded!")
+                    st.success("Loaded!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -113,13 +113,42 @@ else:
     for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
         try:
             stock = yf.Ticker(ticker)
+            info = stock.info
+            company = info.get('longName', info.get('shortName', ticker))[:30]
+            
             price = stock.history(period="1d")['Close'].iloc[-1]
             if price:
                 val = d['qty'] * price
                 cost = d['qty'] * d['cost']
                 pnl = val - cost
                 pct = (pnl/cost*100) if cost else 0
-                rows.append({"Symbol": ticker, "Qty": d['qty'], "Cost (HKD)": d['cost'], "Price (HKD)": price, "Value (HKD)": val, "P&L (HKD)": pnl, "%": pct})
+                
+                # RSI calculation
+                hist = stock.history(period="3mo")['Close']
+                delta = hist.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                rsi_val = (100 - (100 / (1 + rs))).iloc[-1]
+                if pd.isna(rsi_val): rsi_val = 50
+                
+                # Signal
+                if rsi_val < 30: signal = "🟢 BUY"
+                elif rsi_val > 70: signal = "🔴 SELL"
+                else: signal = "🟡 HOLD"
+                
+                rows.append({
+                    "Symbol": ticker,
+                    "Company": company,
+                    "Qty": d['qty'],
+                    "Cost (HKD)": d['cost'],
+                    "Price (HKD)": price,
+                    "Value (HKD)": val,
+                    "P&L (HKD)": pnl,
+                    "%": pct,
+                    "RSI": rsi_val,
+                    "Signal": signal
+                })
                 total_val += val
                 total_cost += cost
         except: pass
@@ -131,7 +160,15 @@ else:
         c2.metric("Cost", f"HKD {total_cost:,.0f}")
         c3.metric("P&L", f"HKD {total_val-total_cost:,.0f}")
         
-        st.dataframe(df.style.format({"Cost (HKD)": "HKD {:.2f}", "Price (HKD)": "HKD {:.2f}", "Value (HKD)": "HKD {:.2f}", "P&L (HKD)": "HKD {:.2f}", "%": "{:.1f}%"}))
+        # Table - no HKD in data cells
+        st.dataframe(df.style.format({
+            "Cost (HKD)": "{:.2f}", 
+            "Price (HKD)": "{:.2f}", 
+            "Value (HKD)": "{:.2f}", 
+            "P&L (HKD)": "{:.2f}", 
+            "%": "{:.1f}%",
+            "RSI": "{:.0f}"
+        }), use_container_width=True)
         
         # Pie chart
         if len(df) > 0:
