@@ -201,13 +201,12 @@ else:
                            color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['盈虧 (港幣)']]))
             
-            cost_total = df['盈虧 (港幣)'].sum()
-            if cost_total != 0:
-                fig_bar.add_hline(y=cost_total*0.1, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
-                fig_bar.add_hline(y=cost_total*0.15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
-                fig_bar.add_hline(y=cost_total*0.2, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
-                fig_bar.add_hline(y=-cost_total*0.1, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
-                fig_bar.add_hline(y=-cost_total*0.2, line_dash="dot", line_color="green", annotation_text="Gain 20%")
+            # Threshold lines at -10%, -15%, -20%, +10%, +20%
+            fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
+            fig_bar.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
+            fig_bar.add_hline(y=-20, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
+            fig_bar.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
+            fig_bar.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
             
             st.plotly_chart(fig_bar, use_container_width=True)
 
