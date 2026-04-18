@@ -1,5 +1,5 @@
 """
-Stock Portfolio - Full UI with Load/Save
+Stock Portfolio - Full UI with enhanced features
 """
 import streamlit as st
 import yfinance as yf
@@ -11,7 +11,6 @@ import os
 URL = os.environ.get("SUPABASE_URL", "")
 KEY = os.environ.get("SUPABASE_KEY", "")
 
-# Try Streamlit secrets
 try:
     URL = st.secrets.get("SUPABASE_URL", URL)
     KEY = st.secrets.get("SUPABASE_KEY", KEY)
@@ -53,10 +52,8 @@ if not st.session_state.logged_in:
                     st.error(f"Error: {e}")
 
 else:
-    # Logged in
     st.write(f"**👤 {st.session_state.username}**")
     
-    # Load, Save, Logout buttons
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("📥 Load Data"):
@@ -86,13 +83,13 @@ else:
             st.session_state.logged_in = False
             st.rerun()
 
-    # Sidebar - Add stocks
+    # Sidebar
     st.sidebar.header("⚙️ Add Stocks")
     
     with st.sidebar.form("add_us"):
         t = st.text_input("US Symbol").upper()
         q = st.number_input("Qty", 1, value=1)
-        c = st.number_input("Cost $", 0.01, value=100.0)
+        c = st.number_input("Cost (HKD)", 0.01, value=100.0)
         if st.form_submit_button("Add US") and t:
             st.session_state.us_stocks[t] = {"qty": q, "cost": c}
             st.rerun()
@@ -100,13 +97,12 @@ else:
     with st.sidebar.form("add_hk"):
         t = st.text_input("HK Symbol").upper()
         q = st.number_input("Qty", 1, value=1)
-        c = st.number_input("Cost $", 0.01, value=100.0)
+        c = st.number_input("Cost (HKD)", 0.01, value=100.0)
         if st.form_submit_button("Add HK") and t:
             t = t if t.endswith('.HK') else t + '.HK'
             st.session_state.hk_stocks[t] = {"qty": q, "cost": c}
             st.rerun()
 
-    # Remove
     all_s = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
     if all_s:
         st.sidebar.write("---")
@@ -116,7 +112,6 @@ else:
             if rem in st.session_state.hk_stocks: del st.session_state.hk_stocks[rem]
             st.rerun()
 
-    # Show holdings
     st.sidebar.write("---")
     st.sidebar.write("**Your Holdings:**")
     for t, d in st.session_state.us_stocks.items():
@@ -126,31 +121,93 @@ else:
     if not all_s:
         st.sidebar.info("No stocks")
 
-    # Portfolio
+    # Portfolio with enhanced table
     st.header("💼 Portfolio")
     rows, total_val, total_cost = [], 0, 0
     
-    for t, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
+    for ticker, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
         try:
-            price = yf.Ticker(t).history(period="1d")['Close'].iloc[-1]
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            
+            # Get company name
+            company_name = info.get('longName', info.get('shortName', ticker))
+            
+            price = stock.history(period="1d")['Close'].iloc[-1]
             if price:
                 val = d['qty'] * price
                 cost = d['qty'] * d['cost']
-                rows.append({"Symbol": t, "Qty": d['qty'], "Cost": d['cost'], "Price": price, "Value": val, "P&L": val-cost})
+                pnl = val - cost
+                pct_gain = (pnl / cost) * 100 if cost > 0 else 0
+                
+                # Calculate RSI for signal
+                hist = stock.history(period="3mo")['Close']
+                delta = hist.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                rs = gain / loss
+                rsi = (100 - (100 / (1 + rs))).iloc[-1]
+                if pd.isna(rsi): rsi = 50
+                
+                # Signal
+                if rsi < 30: signal = "🟢 BUY"
+                elif rsi > 70: signal = "🔴 SELL"
+                else: signal = "🟡 HOLD"
+                
+                rows.append({
+                    "Symbol": ticker,
+                    "Company": company_name[:25] + "..." if len(company_name) > 25 else company_name,
+                    "Qty": d['qty'],
+                    f"Cost (HKD)": d['cost'],
+                    f"Price (HKD)": price,
+                    f"Value (HKD)": val,
+                    f"P&L (HKD)": pnl,
+                    "Gain/Loss %": pct_gain,
+                    "RSI": rsi,
+                    "Signal": signal
+                })
                 total_val += val
                 total_cost += cost
         except:
             pass
 
     if rows:
+        df = pd.DataFrame(rows)
+        
+        # Summary
         c1, c2, c3 = st.columns(3)
         pnl = total_val - total_cost
-        c1.metric("Value", f"${total_val:,.0f}")
-        c2.metric("Cost", f"${total_cost:,.0f}")
-        c3.metric("P&L", f"${pnl:,.0f}")
+        c1.metric("Total Value", f"HKD {total_val:,.0f}")
+        c2.metric("Total Cost", f"HKD {total_cost:,.0f}")
+        c3.metric("Total P&L", f"HKD {pnl:,.0f}")
         
-        st.dataframe(pd.DataFrame(rows).style.format({
-            "Cost": "${:.2f}", "Price": "${:.2f}", "Value": "${:.2f}", "P&L": "${:.2f}"
-        }))
+        # Enhanced table with color
+        def color_gain_loss(val):
+            if isinstance(val, (int, float)):
+                if val < -15:
+                    return 'color: red; font-weight: bold'
+            return ''
+        
+        st.dataframe(
+            df.style.format({
+                "Cost (HKD)": "HKD {:.2f}",
+                "Price (HKD)": "HKD {:.2f}",
+                "Value (HKD)": "HKD {:.2f}",
+                "P&L (HKD)": "HKD {:.2f}",
+                "Gain/Loss %": "{:.1f}%",
+                "RSI": "{:.0f}"
+            }, subset=["Cost (HKD)", "Price (HKD)", "Value (HKD)", "P&L (HKD)", "Gain/Loss %"]),
+            use_container_width=True
+        )
+        
+        # Pie chart
+        st.write("---")
+        st.subheader("📊 Value Distribution")
+        if len(df) > 0:
+            fig = pd.DataFrame({
+                'Symbol': df['Symbol'],
+                'Value': df['Value (HKD)']
+            })
+            st.pyplot(fig.set_index('Symbol')['Value'].plot.pie(autopct='%1.1f%%', figsize=(8,8)).figure)
     else:
         st.info("Add stocks to see portfolio!")
