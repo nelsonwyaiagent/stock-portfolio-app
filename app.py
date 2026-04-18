@@ -1,210 +1,174 @@
 """
-Stock Portfolio Monitor App - Simple Version
+Stock Portfolio Monitor App - Fixed Version
 Author: Nova (AI Assistant)
 """
 
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 import json
 
-st.set_page_config(title="Stock Portfolio Tracker", page_icon="📈", layout="wide")
+st.set_page_config(title="Stock Portfolio", page_icon="📈")
 
-# Simple Supabase - using public anon key for read
-SUPABASE_URL = "https://wnvpmiaxjsvlbqjbvjim.supabase.co"
-# Use the service role key for write operations
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudnBtaWF4anN2bGJRamJ2amltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImluc3RhbmNlIjoiMTIzNDU2IiwiaWF0IjoxNjQyMDAwMDAwLCJleHAiOjE5NTc1NzYwMDAwfQ.pWhD RIGhSg0YdVTvXywz6J5J5J5J5J5J5J5J5J"
-
-st.cache_data.clear()
+# Supabase config
+URL = "https://wnvpmiaxjsvlbqjbvjim.supabase.co"
+KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndudnBtaWF4anN2bGJRamJ2amltIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImluc3RhbmNlIjoiMTIzNDU2IiwiaWF0IjoxNjQyMDAwMDAwLCJleHAiOjE5NTc1NzYwMDAwfQ.pWhDRIGhSg0YdVTvXywz6J5JzX5J5J5J5J5J5J5J5J"
 
 try:
     from supabase import create_client
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    print("Supabase connected!")
-except Exception as e:
-    print(f"Supabase error: {e}")
+    supabase = create_client(URL, KEY)
+except:
     supabase = None
 
-# Session State
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if 'username' not in st.session_state:
-    st.session_state.username = ""
-if 'us_stocks' not in st.session_state:
-    st.session_state.us_stocks = {}
-if 'hk_stocks' not in st.session_state:
-    st.session_state.hk_stocks = {}
+# Session
+if 'login' not in st.session_state:
+    st.session_state.login = False
+if 'user' not in st.session_state:
+    st.session_state.user = ""
+if 'us' not in st.session_state:
+    st.session_state.us = {}
+if 'hk' not in st.session_state:
+    st.session_state.hk = {}
 
-@st.cache_data(ttl=60)
-def get_stock(ticker):
+# Load from Supabase
+def load_portfolio(username):
+    if not supabase:
+        return {}, {}
     try:
-        return yf.Ticker(ticker).history(period="1y")['Close'].iloc[-1]
-    except:
-        return None
+        r = supabase.table('portfolios').select('*').eq('username', username).execute()
+        if r.data:
+            data = r.data[0]
+            us = data.get('us_stocks', '{}')
+            hk = data.get('hk_stocks', '{}')
+            return json.loads(us) if isinstance(us, str) else us, json.loads(hk) if isinstance(hk, str) else hk
+    except Exception as e:
+        st.error(f"Load error: {e}")
+    return {}, {}
 
-def get_all_data(ticker, qty, cost):
-    price = get_stock(ticker)
-    if price is None:
-        return None
-    value = qty * price
-    cost_basis = qty * cost
-    pnl = value - cost_basis
-    pnl_pct = (pnl / cost_basis) * 100 if cost_basis else 0
-    # Simple RSI
-    try:
-        hist = yf.Ticker(ticker).history(period="3mo")['Close']
-        delta = hist.diff()
-        gain = delta.where(delta > 0, 0).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs = gain / loss
-        rsi = (100 - (100 / (1 + rs))).iloc[-1]
-        if pd.isna(rsi): rsi = 50
-    except:
-        rsi = 50
-    return {"price": price, "value": value, "pnl": pnl, "pnl_pct": pnl_pct, "rsi": rsi}
-
-def save_data(username, us, hk):
+# Save to Supabase  
+def save_portfolio(username, us, hk):
     if not supabase:
         return False
     try:
-        # Check if exists
-        check = supabase.table('portfolios').select('username').eq('username', username).execute()
-        if check.data:
+        # Check exists
+        r = supabase.table('portfolios').select('id').eq('username', username).execute()
+        if r.data:
             supabase.table('portfolios').update({'us_stocks': json.dumps(us), 'hk_stocks': json.dumps(hk)}).eq('username', username).execute()
         else:
             supabase.table('portfolios').insert({'username': username, 'us_stocks': json.dumps(us), 'hk_stocks': json.dumps(hk)}).execute()
         return True
     except Exception as e:
-        print(f"Save error: {e}")
+        st.error(f"Save error: {e}")
         return False
 
-def load_data(username):
-    if not supabase:
-        return {}, {}
+# Get stock price
+@st.cache_data(ttl=300)
+def get_price(ticker):
     try:
-        r = supabase.table('portfolios').select('us_stocks', 'hk_stocks').eq('username', username).execute()
-        if r.data and len(r.data) > 0:
-            us = r.data[0].get('us_stocks', '{}')
-            hk = r.data[0].get('hk_stocks', '{}')
-            if isinstance(us, str):
-                us = json.loads(us)
-            if isinstance(hk, str):
-                hk = json.loads(hk)
-            return us, hk
-    except Exception as e:
-        print(f"Load error: {e}")
-    return {}, {}
+        return yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+    except:
+        return None
 
-# Main App
-st.title("📈 Stock Portfolio Tracker")
-st.markdown("**By Nova (AI Assistant)**")
+# Main
+st.title("📈 Stock Portfolio")
 
 # Login
-if not st.session_state.logged_in:
-    st.markdown("---")
-    st.header("🔐 Login")
-    with st.form("login"):
-        username = st.text_input("Username")
-        if st.form_submit_button("Login / Sign Up"):
-            if username:
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                # Load from Supabase
-                us, hk = load_data(username)
-                st.session_state.us_stocks = us if us else {}
-                st.session_state.hk_stocks = hk if hk else {}
-                st.success(f"Loaded {len(st.session_state.us_stocks) + len(st.session_state.hk_stocks)} stocks")
+if not st.session_state.login:
+    st.subheader("🔐 Login")
+    with st.form("f"):
+        user = st.text_input("Username")
+        if st.form_submit_button("Login"):
+            if user:
+                st.session_state.user = user
+                st.session_state.login = True
+                # Load from cloud
+                us, hk = load_portfolio(user)
+                st.session_state.us = us or {}
+                st.session_state.hk = hk or {}
                 st.rerun()
 
 else:
-    # Logged in
-    st.markdown(f"**👤 {st.session_state.username}** | [Logout](javascript:window.location.reload())")
+    st.subheader(f"👤 {st.session_state.user}")
     
     # Save button
-    if st.button("💾 Save to Cloud"):
-        if save_data(st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks):
-            st.success("Saved!")
-        else:
-            st.warning("Save failed")
+    if st.button("💾 Save"):
+        ok = save_portfolio(st.session_state.user, st.session_state.us, st.session_state.hk)
+        if ok: st.success("Saved!")
     
-    # Sidebar - Add stocks
-    st.sidebar.header("⚙️ Add Stocks")
-    
-    # Add US
-    st.sidebar.subheader("🇺🇸 US Stocks")
-    with st.sidebar.form("add_us"):
-        us_t = st.text_input("Symbol (AAPL)", key="us_in").upper()
-        us_q = st.number_input("Qty", min_value=1, value=1)
-        us_c = st.number_input("Cost $", min_value=0.01, value=100.00)
-        if st.form_submit_button("Add US") and us_t:
-            st.session_state.us_stocks[us_t] = {"qty": us_q, "cost": us_c}
-            st.rerun()
-    
-    # Add HK
-    st.sidebar.subheader("🇭🇰 HK Stocks")
-    with st.sidebar.form("add_hk"):
-        hk_t = st.text_input("Symbol (0700.HK)", key="hk_in").upper()
-        hk_q = st.number_input("Qty", min_value=1, value=1)
-        hk_c = st.number_input("Cost $", min_value=0.01, value=100.00)
-        if st.form_submit_button("Add HK") and hk_t:
-            if not hk_t.endswith('.HK'):
-                hk_t = hk_t + '.HK'
-            st.session_state.hk_stocks[hk_t] = {"qty": hk_q, "cost": hk_c}
-            st.rerun()
-    
-    # Remove
-    st.sidebar.subheader("🗑️ Remove")
-    all_stocks = {**st.session_state.us_stocks, **st.session_state.hk_stocks}
-    if all_stocks:
-        rem_t = st.sidebar.selectbox("Select to remove", list(all_stocks.keys()))
-        if st.sidebar.button("Remove"):
-            if rem_t in st.session_state.us_stocks:
-                del st.session_state.us_stocks[rem_t]
-            if rem_t in st.session_state.hk_stocks:
-                del st.session_state.hk_stocks[rem_t]
-            st.rerun()
-    
-    # Show current holdings
-    st.sidebar.markdown("---")
-    st.sidebar.write("**Your Holdings:**")
-    for t, d in st.session_state.us_stocks.items():
-        st.sidebar.write(f"📈 {t}: {d['qty']} @ ${d['cost']}")
-    for t, d in st.session_state.hk_stocks.items():
-        st.sidebar.write(f"📈 {t}: {d['qty']} @ ${d['cost']}")
-    if not st.session_state.us_stocks and not st.session_state.hk_stocks:
-        st.sidebar.info("No stocks added")
+    # Logout
+    if st.button("Logout"):
+        st.session_state.login = False
+        st.session_state.user = ""
+        st.session_state.us = {}
+        st.session_state.hk = {}
+        st.rerun()
 
-    # Portfolio summary
-    st.markdown("---")
-    st.header("💼 Portfolio")
+    # Add stocks - Sidebar
+    st.sidebar.header("Add Stocks")
     
-    holdings = []
+    with st.sidebar.form("add_us"):
+        t = st.text_input("US Symbol").upper()
+        q = st.number_input("Qty", 1, value=1)
+        c = st.number_input("Cost", 0.01, value=100.0)
+        if st.form_submit_button("Add US") and t:
+            st.session_state.us[t] = {"qty": q, "cost": c}
+            save_portfolio(st.session_state.user, st.session_state.us, st.session_state.hk)
+            st.rerun()
+    
+    with st.sidebar.form("add_hk"):
+        t = st.text_input("HK Symbol").upper()
+        q = st.number_input("Qty", 1, value=1)
+        c = st.number_input("Cost", 0.01, value=100.0)
+        if st.form_submit_button("Add HK") and t:
+            t = t if t.endswith('.HK') else t + '.HK'
+            st.session_state.hk[t] = {"qty": q, "cost": c}
+            save_portfolio(st.session_state.user, st.session_state.us, st.session_state.hk)
+            st.rerun()
+
+    # Remove
+    all_s = {**st.session_state.us, **st.session_state.hk}
+    if all_s:
+        st.sidebar.markdown("---")
+        rem = st.sidebar.selectbox("Remove", list(all_s.keys()))
+        if st.sidebar.button("Delete"):
+            if rem in st.session_state.us: del st.session_state.us[rem]
+            if rem in st.session_state.hk: del st.session_state.hk[rem]
+            save_portfolio(st.session_state.user, st.session_state.us, st.session_state.hk)
+            st.rerun()
+
+    # Show holdings
+    st.sidebar.markdown("---")
+    st.sidebar.write("**Your Stocks:**")
+    for t, d in st.session_state.us.items(): st.sidebar.write(f"{t}: {d['qty']} @ ${d['cost']}")
+    for t, d in st.session_state.hk.items(): st.sidebar.write(f"{t}: {d['qty']} @ ${d['cost']}")
+
+    # Portfolio table
+    st.markdown("---")
+    st.subheader("💼 Portfolio")
+    
+    rows = []
     total_val = 0
     total_cost = 0
     
-    for t, d in {**st.session_state.us_stocks, **st.session_state.hk_stocks}.items():
-        m = get_all_data(t, d['qty'], d['cost'])
-        if m:
-            total_val += m['value']
-            total_cost += d['qty'] * d['cost']
-            rsi_val = m['rsi']
-            if rsi_val < 30: sig = "🟢 BUY"
-            elif rsi_val > 70: sig = "🔴 SELL"
-            else: sig = "🟡 HOLD"
-            holdings.append({"Ticker": t, "Qty": d['qty'], "Cost": d['cost'], "Price": m['price'], "Value": m['value'], "P&L": m['pnl'], "P&L%": m['pnl_pct'], "RSI": rsi_val, "Signal": sig})
+    for t, d in {**st.session_state.us, **st.session_state.hk}.items():
+        price = get_price(t)
+        if price:
+            val = d['qty'] * price
+            cost = d['qty'] * d['cost']
+            pnl = val - cost
+            rows.append({"Symbol": t, "Qty": d['qty'], "Cost": d['cost'], "Price": price, "Value": val, "P&L": pnl})
+            total_val += val
+            total_cost += cost
 
-    if holdings:
-        pnl = total_val - total_cost
-        pnl_pct = (pnl / total_cost) * 100 if total_cost else 0
+    if rows:
+        df = pd.DataFrame(rows)
         c1, c2, c3, c4 = st.columns(4)
+        pnl = total_val - total_cost
         c1.metric("Value", f"${total_val:,.0f}")
         c2.metric("Cost", f"${total_cost:,.0f}")
-        c3.metric("P&L", f"${pnl:,.0f}", f"{pnl_pct:.1f}%")
-        c4.metric("Stocks", len(holdings))
-
-        st.dataframe(pd.DataFrame(holdings).style.format({"Cost": "${:.2f}", "Price": "${:.2f}", "Value": "${:.2f}", "P&L": "${:.2f}", "P&L%": "{:.1f}%", "RSI": "{:.0f}"}), use_container_width=True)
-    
-    st.markdown(f"**Last updated:** {datetime.now().strftime('%H:%M')}")
+        c3.metric("P&L", f"${pnl:,.0f}")
+        c4.metric("Stocks", len(rows))
+        
+        st.dataframe(df.style.format({"Cost": "${:.2f}", "Price": "${:.2f}", "Value": "${:.2f}", "P&L": "${:.2f}"}), use_container_width=True)
+    else:
+        st.info("No stocks yet. Add some!")
