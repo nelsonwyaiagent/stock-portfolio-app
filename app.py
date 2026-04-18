@@ -197,9 +197,9 @@ else:
         st.subheader("📊 各股票盈虧")
         
         if len(df) > 0:
-            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='股票盈虧', 
+            fig_bar = px.bar(df, x='股票代號', y='%', title='股票盈虧', 
                            color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
-            fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['盈虧 (港幣)']]))
+            fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             
             # Threshold lines at -10%, -15%, -20%, +10%, +20%
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
