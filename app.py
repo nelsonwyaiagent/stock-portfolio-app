@@ -6,6 +6,7 @@ import yfinance as yf
 import pandas as pd
 import json
 import os
+import plotly.express as px
 
 # Get from environment
 URL = os.environ.get("SUPABASE_URL", "")
@@ -130,7 +131,6 @@ else:
             stock = yf.Ticker(ticker)
             info = stock.info
             
-            # Get company name
             company_name = info.get('longName', info.get('shortName', ticker))
             
             price = stock.history(period="1d")['Close'].iloc[-1]
@@ -140,7 +140,7 @@ else:
                 pnl = val - cost
                 pct_gain = (pnl / cost) * 100 if cost > 0 else 0
                 
-                # Calculate RSI for signal
+                # RSI
                 hist = stock.history(period="3mo")['Close']
                 delta = hist.diff()
                 gain = delta.where(delta > 0, 0).rolling(14).mean()
@@ -181,8 +181,8 @@ else:
         c2.metric("Total Cost", f"HKD {total_cost:,.0f}")
         c3.metric("Total P&L", f"HKD {pnl:,.0f}")
         
-        # Enhanced table with color
-        def color_gain_loss(val):
+        # Table with color for Gain/Loss %
+        def color_pnl(val):
             if isinstance(val, (int, float)):
                 if val < -15:
                     return 'color: red; font-weight: bold'
@@ -196,18 +196,16 @@ else:
                 "P&L (HKD)": "HKD {:.2f}",
                 "Gain/Loss %": "{:.1f}%",
                 "RSI": "{:.0f}"
-            }, subset=["Cost (HKD)", "Price (HKD)", "Value (HKD)", "P&L (HKD)", "Gain/Loss %"]),
+            }).applymap(color_pnl, subset=["Gain/Loss %"]),
             use_container_width=True
         )
         
-        # Pie chart
+        # Pie chart using plotly
         st.write("---")
         st.subheader("📊 Value Distribution")
         if len(df) > 0:
-            fig = pd.DataFrame({
-                'Symbol': df['Symbol'],
-                'Value': df['Value (HKD)']
-            })
-            st.pyplot(fig.set_index('Symbol')['Value'].plot.pie(autopct='%1.1f%%', figsize=(8,8)).figure)
+            fig = px.pie(df, values='Value (HKD)', names='Symbol', title='Portfolio Allocation', hole=0.4)
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Add stocks to see portfolio!")
