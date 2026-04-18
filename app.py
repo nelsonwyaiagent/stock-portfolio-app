@@ -24,7 +24,6 @@ st.set_page_config(
 # SUPABASE - Load from Streamlit Secrets
 # ============================================
 
-# Check for Streamlit secrets first, then environment
 try:
     supabase_url = st.secrets.get("SUPABASE_URL", os.environ.get("SUPABASE_URL", ""))
     supabase_key = st.secrets.get("SUPABASE_KEY", os.environ.get("SUPABASE_KEY", ""))
@@ -32,7 +31,6 @@ except:
     supabase_url = os.environ.get("SUPABASE_URL", "")
     supabase_key = os.environ.get("SUPABASE_KEY", "")
 
-# Initialize Supabase if available
 supabase_client = None
 if supabase_url and supabase_key:
     try:
@@ -47,6 +45,9 @@ if supabase_url and supabase_key:
 
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
+
+if 'user_email' not in st.session_state:
+    st.session_state.user_email = None
 
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
@@ -95,7 +96,6 @@ def calculate_metrics(ticker, qty, avg_cost):
     pnl = current_value - cost_basis
     pnl_percent = (pnl / cost_basis) * 100 if cost_basis > 0 else 0
     
-    # Weekly change
     week_ago = datetime.now() - timedelta(days=7)
     try:
         week_data = df[df.index <= week_ago]
@@ -104,12 +104,10 @@ def calculate_metrics(ticker, qty, avg_cost):
     except:
         weekly_change = 0
     
-    # RSI
     rsi = calculate_rsi(df['Close']).iloc[-1]
     if pd.isna(rsi):
         rsi = 50
     
-    # MACD
     macd_value = calculate_macd(df['Close']).iloc[-1]
     if pd.isna(macd_value):
         macd_value = 0
@@ -140,20 +138,21 @@ def get_signal(rsi, macd):
 # SUPABASE FUNCTIONS
 # ============================================
 
-def save_portfolio(user_id, username, us_stocks, hk_stocks):
+def save_portfolio(user_id, us_stocks, hk_stocks):
     if not supabase_client:
         return False
     try:
-        response = supabase_client.table('portfolios').update({
-            'username': username,
-            'us_stocks': json.dumps(us_stocks),
-            'hk_stocks': json.dumps(hk_stocks)
-        }).eq('id', user_id).execute()
+        # Check if exists
+        response = supabase_client.table('portfolios').select('id').eq('id', user_id).execute()
         
-        if not response.data:
+        if response.data:
+            supabase_client.table('portfolios').update({
+                'us_stocks': json.dumps(us_stocks),
+                'hk_stocks': json.dumps(hk_stocks)
+            }).eq('id', user_id).execute()
+        else:
             supabase_client.table('portfolios').insert({
                 'id': user_id,
-                'username': username,
                 'us_stocks': json.dumps(us_stocks),
                 'hk_stocks': json.dumps(hk_stocks)
             }).execute()
@@ -173,18 +172,73 @@ def load_portfolio(user_id):
         pass
     return {}, {}
 
-def login(username):
-    st.session_state.logged_in = True
-    st.session_state.username = username
-    st.session_state.user_id = username
-    us, hk = load_portfolio(username)
-    st.session_state.us_stocks = us if us else {}
-    st.session_state.hk_stocks = hk if hk else {}
+def login_user(email, password):
+    if not supabase_client:
+        st.error("Supabase not configured!")
+        return False
+    
+    try:
+        response = supabase_client.auth.sign_in_with_password({
+            "email": email,
+            "password": password
+        })
+        
+        if response.user:
+            st.session_state.logged_in = True
+            st.session_state.user_email = response.user.email
+            st.session_state.user_id = response.user.id
+            
+            # Load portfolio
+            us, hk = load_portfolio(response.user.id)
+            st.session_state.us_stocks = us if us else {}
+            st.session_state.hk_stocks = hk if hk else {}
+            return True
+    except Exception as e:
+        st.error(f"Login failed: {str(e)}")
+    return False
 
-def logout():
+def signup_user(email, password, username):
+    if not supabase_client:
+        st.error("Supabase not configured!")
+        return False
+    
+    try:
+        response = supabase_client.auth.sign_up({
+            "email": email,
+            "password": password
+        })
+        
+        if response.user:
+            # Create portfolio entry
+            supabase_client.table('portfolios').insert({
+                'id': response.user.id,
+                'username': username,
+                'email': email,
+                'us_stocks': '{}',
+                'hk_stocks': '{}'
+            }).execute()
+            
+            st.session_state.logged_in = True
+            st.session_state.user_email = email
+            st.session_state.user_id = response.user.id
+            st.session_state.username = username
+            return True
+    except Exception as e:
+        st.error(f"Signup failed: {str(e)}")
+    return False
+
+def logout_user():
     if st.session_state.logged_in:
-        save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+        save_portfolio(st.session_state.user_id, st.session_state.us_stocks, st.session_state.hk_stocks)
+    
+    if supabase_client:
+        try:
+            supabase_client.auth.sign_out()
+        except:
+            pass
+    
     st.session_state.logged_in = False
+    st.session_state.user_email = None
     st.session_state.user_id = None
     st.session_state.username = ""
     st.session_state.us_stocks = {}
@@ -199,26 +253,48 @@ st.markdown("**By Nova (AI Assistant)**")
 
 if not st.session_state.logged_in:
     st.markdown("---")
-    st.header("🔐 Login / Sign Up")
-    with st.form("login"):
-        username = st.text_input("Username")
-        if st.form_submit_button("Login / Sign Up") and username:
-            login(username)
-            st.rerun()
+    
+    tab_login, tab_signup = st.tabs(["🔐 Login", "📝 Sign Up"])
+    
+    with tab_login:
+        with st.form("login"):
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.form_submit_button("Login"):
+                login_user(email, password)
+                st.rerun()
+    
+    with tab_signup:
+        with st.form("signup"):
+            username = st.text_input("Username")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            confirm_password = st.text_input("Confirm Password", type="password")
+            
+            if st.form_submit_button("Sign Up"):
+                if password != confirm_password:
+                    st.error("Passwords don't match!")
+                elif len(password) < 6:
+                    st.error("Password must be at least 6 characters!")
+                else:
+                    signup_user(email, password, username)
+                    st.success("Account created! Please login.")
+                    st.rerun()
 
 else:
-    st.markdown(f"**Welcome, {st.session_state.username}!**")
+    # Logged in
+    st.markdown(f"**Logged in as: {st.session_state.user_email}**")
     
     col1, col2 = st.columns([6, 1])
     with col1:
         if st.button("💾 Save to Cloud"):
-            if save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks):
-                st.success("Saved!")
+            if save_portfolio(st.session_state.user_id, st.session_state.us_stocks, st.session_state.hk_stocks):
+                st.success("Saved to cloud!")
             else:
-                st.warning("Save failed - configure Supabase in Streamlit secrets")
+                st.warning("Save failed")
     with col2:
         if st.button("Logout"):
-            logout()
+            logout_user()
             st.rerun()
 
     # Sidebar
@@ -228,24 +304,24 @@ else:
     
     with tab1:
         with st.form("add_us"):
-            ticker = st.text_input("Symbol (e.g. AAPL)", key="us").upper()
-            qty = st.number_input("Qty", min_value=1, value=1)
-            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00)
+            ticker = st.text_input("Symbol (e.g. AAPL)", key="us_add").upper()
+            qty = st.number_input("Qty", min_value=1, value=1, key="us_qty")
+            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00, key="us_cost")
             if st.form_submit_button("➕ Add") and ticker:
                 st.session_state.us_stocks[ticker] = {"qty": qty, "cost": cost}
-                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                save_portfolio(st.session_state.user_id, st.session_state.us_stocks, st.session_state.hk_stocks)
                 st.rerun()
 
     with tab2:
         with st.form("add_hk"):
-            ticker = st.text_input("Symbol (e.g. 0700.HK)", key="hk").upper()
-            qty = st.number_input("Qty", min_value=1, value=1)
-            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00)
+            ticker = st.text_input("Symbol (e.g. 0700.HK)", key="hk_add").upper()
+            qty = st.number_input("Qty", min_value=1, value=1, key="hk_qty")
+            cost = st.number_input("Avg Cost $", min_value=0.01, value=100.00, key="hk_cost")
             if st.form_submit_button("➕ Add") and ticker:
                 if not ticker.endswith('.HK'):
                     ticker = ticker + '.HK'
                 st.session_state.hk_stocks[ticker] = {"qty": qty, "cost": cost}
-                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                save_portfolio(st.session_state.user_id, st.session_state.us_stocks, st.session_state.hk_stocks)
                 st.rerun()
 
     with tab3:
@@ -257,7 +333,7 @@ else:
                     del st.session_state.us_stocks[remove]
                 if remove in st.session_state.hk_stocks:
                     del st.session_state.hk_stocks[remove]
-                save_portfolio(st.session_state.user_id, st.session_state.username, st.session_state.us_stocks, st.session_state.hk_stocks)
+                save_portfolio(st.session_state.user_id, st.session_state.us_stocks, st.session_state.hk_stocks)
                 st.rerun()
 
     st.sidebar.markdown("---")
@@ -266,8 +342,10 @@ else:
         st.sidebar.write(f"- {t}: {d['qty']} @ ${d['cost']}")
     for t, d in st.session_state.hk_stocks.items():
         st.sidebar.write(f"- {t}: {d['qty']} @ ${d['cost']}")
+    if not st.session_state.us_stocks and not st.session_state.hk_stocks:
+        st.sidebar.info("No stocks yet")
 
-    # Portfolio Overview
+    # Portfolio
     st.markdown("---")
     st.header("💼 Portfolio Overview")
     
@@ -281,7 +359,7 @@ else:
             total_value += m['current_value']
             total_cost += m['cost_basis']
             sig, emoji = get_signal(m['rsi'], m['macd'])
-            holdings.append({**data, "ticker": ticker, "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
+            holdings.append({"ticker": ticker, "qty": data['qty'], "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
 
     for ticker, data in st.session_state.hk_stocks.items():
         m = calculate_metrics(ticker, data['qty'], data['cost'])
@@ -289,7 +367,7 @@ else:
             total_value += m['current_value']
             total_cost += m['cost_basis']
             sig, emoji = get_signal(m['rsi'], m['macd'])
-            holdings.append({**data, "ticker": ticker, "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
+            holdings.append({"ticker": ticker, "qty": data['qty'], "price": m['current_price'], "value": m['current_value'], "pnl": m['pnl'], "pnl_pct": m['pnl_percent'], "rsi": m['rsi'], "signal": f"{emoji} {sig}"})
 
     if holdings:
         col1, col2, col3, col4 = st.columns(4)
@@ -301,6 +379,17 @@ else:
         col4.metric("Holdings", len(holdings))
 
         st.markdown("---")
-        st.header("📊 Holdings")
+        st.header("📊 Holdings Detail")
         df = pd.DataFrame(holdings)
         st.dataframe(df[["ticker", "qty", "price", "value", "pnl", "rsi", "signal"]].style.format({"price": "${:.2f}", "value": "${:.2f}", "pnl": "${:.2f}", "rsi": "{:.1f}"}), use_container_width=True)
+        
+        # Charts
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = go.Figure(go.Pie(labels=df['ticker'], values=df['value'], hole=0.4))
+            fig.update_layout(title="Allocation")
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            fig = go.Figure(go.Bar(x=df['ticker'], y=df['pnl'], marker_color=['green' if x > 0 else 'red' for x in df['pnl']]))
+            fig.update_layout(title="P/L")
+            st.plotly_chart(fig, use_container_width=True)
