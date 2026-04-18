@@ -203,11 +203,11 @@ else:
             
             cost_total = df['盈虧 (港幣)'].sum()
             if cost_total != 0:
-                fig_bar.add_hline(y=cost_total*0.1, line_dash="dash", line_color="orange", annotation="Loss 10%")
-                fig_bar.add_hline(y=cost_total*0.15, line_dash="dot", line_color="red", annotation="Loss 15%")
-                fig_bar.add_hline(y=cost_total*0.2, line_dash="dot", line_color="darkred", annotation="Loss 20%")
-                fig_bar.add_hline(y=-cost_total*0.1, line_dash="dash", line_color="lightgreen", annotation="Gain 10%")
-                fig_bar.add_hline(y=-cost_total*0.2, line_dash="dot", line_color="green", annotation="Gain 20%")
+                fig_bar.add_hline(y=cost_total*0.1, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
+                fig_bar.add_hline(y=cost_total*0.15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
+                fig_bar.add_hline(y=cost_total*0.2, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
+                fig_bar.add_hline(y=-cost_total*0.1, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
+                fig_bar.add_hline(y=-cost_total*0.2, line_dash="dot", line_color="green", annotation_text="Gain 20%")
             
             st.plotly_chart(fig_bar, use_container_width=True)
 
