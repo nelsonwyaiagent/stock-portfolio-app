@@ -238,12 +238,7 @@ else:
                                         st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
-                
-                df_tx = pd.DataFrame(tx_list)
-                df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
-                df_tx = df_tx.reset_index(drop=True)
-                
-                except Exception as e:
+        except Exception as e:
             st.error(f"Error: {e}")
 
     # ===== PORTFOLIO =====
