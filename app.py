@@ -212,7 +212,7 @@ else:
                     with col6: st.write(f"{row['現價']:.2f}" if row['現價'] else "-")
                     with col7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
                     with col8: 
-                        if st.button(f"🗑️", key=f"del_{row['股票代號']}_{row['交易日期']}"):
+                        if st.button(f"🗑️", key=f"del_{row['股票代號']}_{row['交易日期']}_{row['類型']}_{row['成交價']}"):
                             try:
                                 # Delete this transaction
                                 supabase.table('transactions').delete().eq('symbol', row['股票代號']).eq('transaction_date', row['交易日期']).execute()
