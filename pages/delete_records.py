@@ -36,10 +36,18 @@ def get_name(t):
 
 st.title("🗑️ 刪除交易記錄")
 
-# Check login
-if 'logged_in' not in st.session_state or not st.session_state.get('logged_in', False):
+# Check login - use URL param or session state
+username = st.query_params.get("user", "")
+if not username and ('logged_in' in st.session_state and st.session_state.get('logged_in')):
+    username = st.session_state.get('username', "")
+
+if not username:
     st.warning("請先响 主頁 登入!")
+    st.markdown("[去主頁登入](./)")
     st.stop()
+
+st.session_state.username = username
+st.session_state.logged_in = True
 
 st.write(f"**用戶:** {st.session_state.username}")
 

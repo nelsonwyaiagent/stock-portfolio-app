@@ -89,7 +89,8 @@ else:
     # Sidebar navigation
     st.sidebar.write("---")
     st.sidebar.markdown("### 📂 頁面")
-    st.sidebar.markdown("[🗑️ 刪除交易記錄](./delete_records)")
+    user_param = st.session_state.get('username', '')
+    st.sidebar.markdown(f"[🗑️ 刪除交易記錄](./delete_records?user={user_param})")
 
     # ===== SIDEBAR =====
     st.sidebar.header("⚙️ 添加股票")
@@ -227,22 +228,7 @@ else:
                 if display_tx:
                     st.dataframe(display_tx, use_container_width=True)
                 
-                # Delete buttons below
-                st.write("**刪除記錄:**")
-                for i, row in df_tx.iterrows():
-                    c1, c2 = st.columns([4, 1])
-                    with c1: st.write(f"刪除 {row['股票代號']} - {row['交易日期']}")
-                    with c2:
-                        if st.button("X", key=f"del_{i}"):
-                            try:
-                                if i < len(r.data):
-                                    tx_id = r.data[i].get('id')
-                                    if tx_id:
-                                        supabase.table('transactions').delete().eq('id', tx_id).execute()
-                                        st.success(f"Deleted {row['股票代號']}")
-                                        st.rerun()
-                            except Exception as e:
-                                st.error(f"Error: {e}")
+                st.markdown("如需刪除記錄，請到 [刪除交易記錄](./delete_records) 頁面")
         except Exception as e:
             st.error(f"Error: {e}")
 
