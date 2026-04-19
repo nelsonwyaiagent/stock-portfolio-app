@@ -200,9 +200,10 @@ else:
                 # Display transactions with delete option
                 df_tx = pd.DataFrame(tx_list)
                 df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
+                df_tx = df_tx.reset_index(drop=True)
                 
                 # Add index for deletion
-                for idx, row in df_tx.iterrows():
+                for i, row in df_tx.iterrows():
                     col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1])
                     with col1: st.write(row['股票代號'])
                     with col2: st.write(row['類型'])
@@ -212,10 +213,13 @@ else:
                     with col6: st.write(f"{row['現價']:.2f}" if row['現價'] else "-")
                     with col7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
                     with col8: 
-                        if st.button(f"🗑️", key=f"del_{row['股票代號']}_{row['交易日期']}_{row['類型']}_{row['成交價']}"):
+                        if st.button(f"🗑️", key=f"del_{i}"):
                             try:
-                                # Delete this transaction
-                                supabase.table('transactions').delete().eq('symbol', row['股票代號']).eq('transaction_date', row['交易日期']).execute()
+                                # Delete by index (use position in list)
+                                if i < len(r.data):
+                                    tx_id = r.data[i].get('id')
+                                    if tx_id:
+                                        supabase.table('transactions').delete().eq('id', tx_id).execute()
                                 st.success(f"Deleted {row['股票代號']}")
                                 st.rerun()
                             except Exception as e:
