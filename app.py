@@ -197,31 +197,34 @@ else:
                     else:
                         holdings[sym]['avg_cost'] = 0
                 
-                # Display transactions with delete option
+                # Display transactions with header and fixed width
+                st.markdown("**📋 交易記錄**")
+                st.markdown("| 股票代號 | 類型 | 數量 | 成交價 | 交易日期 | 現價 | 盈虧比率 | |")
+                st.markdown("|---------|------|------|-------|----------|------|---------|---|")
+                
                 df_tx = pd.DataFrame(tx_list)
                 df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
                 df_tx = df_tx.reset_index(drop=True)
                 
-                # Add index for deletion
+                # Display rows with fixed column widths
                 for i, row in df_tx.iterrows():
-                    col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([1, 1, 1, 1, 1, 1, 1, 1, 1])
-                    with col1: st.write(row['股票代號'])
-                    with col2: st.write(row['類型'])
-                    with col3: st.write(row['數量'])
-                    with col4: st.write(f"{row['成交價']:.2f}")
-                    with col5: st.write(row['交易日期'])
-                    with col6: st.write(f"{row['現價']:.2f}" if row['現價'] else "-")
-                    with col7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
-                    with col8: 
-                        if st.button(f"🗑️", key=f"del_{i}"):
+                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2.5, 1.5, 1.5, 0.5])
+                    with c1: st.markdown(f"**{row['股票代號']}**")
+                    with c2: st.write(row['類型'])
+                    with c3: st.write(row['數量'])
+                    with c4: st.write(f"${row['成交價']:.2f}")
+                    with c5: st.write(row['交易日期'])
+                    with c6: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
+                    with c7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
+                    with c8: 
+                        if st.button("🗑️", key=f"del_{i}"):
                             try:
-                                # Delete by index (use position in list)
                                 if i < len(r.data):
                                     tx_id = r.data[i].get('id')
                                     if tx_id:
                                         supabase.table('transactions').delete().eq('id', tx_id).execute()
-                                st.success(f"Deleted {row['股票代號']}")
-                                st.rerun()
+                                        st.success(f"Deleted {row['股票代號']}")
+                                        st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
         except Exception as e:
