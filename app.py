@@ -221,6 +221,7 @@ else:
                 '類型': row['類型'],
                 '數量': row['數量'],
                 '成交價': f"${row['成交價']:.2f}",
+                '成交總額': f"${row['數量'] * row['成交價']:.2f}",
                 '交易日期': row['交易日期'],
                 '現價': f"${row['現價']:.2f}" if row['現價'] else "-",
                 '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
@@ -233,14 +234,15 @@ else:
         st.write(f"**共 {len(tx_list)} 筆記錄**")
         
         for row in tx_list:
-            c1, c2, c3, c4, c5, c6, c7 = st.columns([2, 1, 1, 1.5, 2.5, 1.5, 1])
+            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2, 2, 1.5, 1])
             with c1: st.write(f"**{row['股票代號']}**")
             with c2: st.write(row['類型'])
             with c3: st.write(row['數量'])
             with c4: st.write(f"${row['成交價']:.2f}")
-            with c5: st.write(row['交易日期'])
-            with c6: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
-            with c7:
+            with c5: st.write(f"${row['數量'] * row['成交價']:.2f}")
+            with c6: st.write(row['交易日期'])
+            with c7: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
+            with c8:
                 if st.button("🗑️", key=f"del_{row['id']}"):
                     try:
                         supabase.table('transactions').delete().eq('id', row['id']).execute()
