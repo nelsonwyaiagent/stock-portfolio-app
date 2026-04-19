@@ -86,6 +86,11 @@ else:
     with col3:
         if st.button("登出"): st.session_state.logged_in = False; st.rerun()
 
+    # Sidebar navigation
+    st.sidebar.write("---")
+    st.sidebar.markdown("### 📂 頁面")
+    st.sidebar.page_link("pages/delete_records.py", label="🗑️ 刪除交易記錄")
+
     # ===== SIDEBAR =====
     st.sidebar.header("⚙️ 添加股票")
     with st.sidebar.form("add_us"):
