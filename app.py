@@ -43,8 +43,14 @@ for k in ['logged_in','username','us_stocks','hk_stocks']:
 
 st.title("📈 股票組合")
 
-# Login
-if not st.session_state.logged_in:
+# Login check - support query param for pages
+query_user = st.query_params.get("user", "")
+if query_user:
+    st.session_state.username = query_user
+    st.session_state.logged_in = True
+
+# Login form (only if not logged in)
+if not st.session_state.get('logged_in', False):
     st.header("🔐 登入")
     with st.form("login"):
         user = st.text_input("用戶名")
@@ -90,6 +96,7 @@ else:
     st.sidebar.write("---")
     st.sidebar.markdown("### 📂 頁面")
     user_param = st.session_state.get('username', '')
+    st.sidebar.markdown(f"[📈 投資組合](./?user={user_param})")
     st.sidebar.markdown(f"[🗑️ 刪除交易記錄](./delete_records?user={user_param})")
 
     # ===== SIDEBAR =====
