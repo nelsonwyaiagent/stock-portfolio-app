@@ -188,7 +188,7 @@ else:
                 
                 st.dataframe(display_df, use_container_width=True)
                 
-                # Calculate holdings
+                # Calculate holdings with average cost
                 for _, row in df_tx.iterrows():
                     sym = row['股票代號']
                     if sym not in holdings:
@@ -200,6 +200,13 @@ else:
                         holdings[sym]['qty'] += row['數量']
                     else:
                         holdings[sym]['qty'] -= row['數量']
+                
+                # Calculate average cost for each holding
+                for sym in holdings:
+                    if holdings[sym]['buy_qty'] > 0:
+                        holdings[sym]['avg_cost'] = holdings[sym]['buy_total'] / holdings[sym]['buy_qty']
+                    else:
+                        holdings[sym]['avg_cost'] = 0
         except Exception as e:
             st.error(f"Error: {e}")
 
@@ -323,6 +330,7 @@ else:
             total = 0
             for ticker, d in display_holdings.items():
                 if isinstance(d, dict) and d.get('qty', 0) > 0:
+                    cost = d.get('avg_cost', d.get('cost', 0))
                     try:
                         stock = yf.Ticker(ticker)
                         hist = stock.history(start="2026-01-01", end=month_end)
