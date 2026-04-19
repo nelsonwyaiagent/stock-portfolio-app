@@ -200,6 +200,11 @@ else:
                 # Display transactions using st.dataframe for proper alignment
                 st.markdown("**📋 交易記錄**")
                 
+                # Create dataframe first
+                df_tx = pd.DataFrame(tx_list)
+                df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
+                df_tx = df_tx.reset_index(drop=True)
+                
                 # Prepare display data with action column
                 display_tx = []
                 for i, row in df_tx.iterrows():
@@ -211,18 +216,17 @@ else:
                         '交易日期': row['交易日期'],
                         '現價': f"${row['現價']:.2f}" if row['現價'] else "-",
                         '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
-                        '刪除': '[X]'  # Placeholder for delete
+                        '操作': 'X'
                     })
                 
                 if display_tx:
-                    df_display = pd.DataFrame(display_tx)
-                    st.dataframe(df_display, use_container_width=True)
+                    st.dataframe(display_tx, use_container_width=True)
                 
                 # Delete buttons below
-                st.write("**操作:**")
+                st.write("**刪除記錄:**")
                 for i, row in df_tx.iterrows():
                     c1, c2 = st.columns([4, 1])
-                    with c1: st.write(f"刪除 {row['股票代號']} ({row['交易日期']})")
+                    with c1: st.write(f"刪除 {row['股票代號']} - {row['交易日期']}")
                     with c2:
                         if st.button("X", key=f"del_{i}"):
                             try:
@@ -239,28 +243,7 @@ else:
                 df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
                 df_tx = df_tx.reset_index(drop=True)
                 
-                # Display rows with fixed column widths
-                for i, row in df_tx.iterrows():
-                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2.5, 1.5, 1.5, 0.5])
-                    with c1: st.markdown(f"**{row['股票代號']}**")
-                    with c2: st.write(row['類型'])
-                    with c3: st.write(row['數量'])
-                    with c4: st.write(f"${row['成交價']:.2f}")
-                    with c5: st.write(row['交易日期'])
-                    with c6: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
-                    with c7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
-                    with c8: 
-                        if st.button("🗑️", key=f"del_{i}"):
-                            try:
-                                if i < len(r.data):
-                                    tx_id = r.data[i].get('id')
-                                    if tx_id:
-                                        supabase.table('transactions').delete().eq('id', tx_id).execute()
-                                        st.success(f"Deleted {row['股票代號']}")
-                                        st.rerun()
-                            except Exception as e:
-                                st.error(f"Error: {e}")
-        except Exception as e:
+                except Exception as e:
             st.error(f"Error: {e}")
 
     # ===== PORTFOLIO =====
