@@ -89,7 +89,7 @@ else:
     # Sidebar navigation
     st.sidebar.write("---")
     st.sidebar.markdown("### 📂 頁面")
-    st.sidebar.page_link("pages/delete_records.py", label="🗑️ 刪除交易記錄")
+    st.sidebar.markdown("[🗑️ 刪除交易記錄](./delete_records)")
 
     # ===== SIDEBAR =====
     st.sidebar.header("⚙️ 添加股票")
