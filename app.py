@@ -1,5 +1,5 @@
 """
-Stock Portfolio with Transaction Tracking v1.1 - Fixed
+Stock Portfolio with Transaction Tracking v1.1 - Fixed Average Cost
 """
 import streamlit as st
 import yfinance as yf
@@ -86,8 +86,8 @@ else:
     with col3:
         if st.button("登出"): st.session_state.logged_in = False; st.rerun()
 
-    # ===== SIDEBAR: ADD STOCKS =====
-    st.sidebar.header("⚙️ 添加股票 (直接)")
+    # ===== SIDEBAR =====
+    st.sidebar.header("⚙️ 添加股票")
     with st.sidebar.form("add_us"):
         t = st.text_input("美股").upper()
         q = st.number_input("數量", 1, value=1)
@@ -145,15 +145,17 @@ else:
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-    # ===== TRANSACTION HISTORY =====
-    st.header("📋 交易記錄 (按股票代號排序)")
+    # ===== TRANSACTION HISTORY & HOLDINGS CALCULATION =====
+    st.header("📋 交易記錄")
     
+    # Calculate holdings from transactions
     holdings = {}
+    
     if supabase:
         try:
             r = supabase.table('transactions').select('*').eq('username', st.session_state.username).execute()
             if r.data and len(r.data) > 0:
-                tx_data = []
+                tx_list = []
                 for row in r.data:
                     sym = row['symbol']
                     try:
@@ -165,7 +167,7 @@ else:
                     if row['transaction_type'] == 'BUY' and current_price:
                         pl_ratio = ((current_price - row['price']) / row['price']) * 100
                     
-                    tx_data.append({
+                    tx_list.append({
                         '股票代號': sym,
                         '公司': get_name(sym),
                         '類型': row['transaction_type'],
@@ -176,76 +178,75 @@ else:
                         '盈虧比率': pl_ratio,
                         '備註': row.get('notes', '')
                     })
+                    
+                    # Calculate holdings
+                    if sym not in holdings:
+                        holdings[sym] = {'qty': 0, 'total_buy': 0, 'total_buy_qty': 0}
+                    
+                    if row['transaction_type'] == 'BUY':
+                        holdings[sym]['total_buy'] += row['quantity'] * row['price']
+                        holdings[sym]['total_buy_qty'] += row['quantity']
+                        holdings[sym]['qty'] += row['quantity']
+                    else:  # SELL
+                        holdings[sym]['qty'] -= row['quantity']
                 
-                df_tx = pd.DataFrame(tx_data)
+                # Calculate average cost for remaining holdings
+                for sym in holdings:
+                    if holdings[sym]['total_buy_qty'] > 0:
+                        holdings[sym]['avg_cost'] = holdings[sym]['total_buy'] / holdings[sym]['total_buy_qty']
+                    else:
+                        holdings[sym]['avg_cost'] = 0
+                
+                # Display transactions
+                df_tx = pd.DataFrame(tx_list)
                 df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
                 
-                # Display table
                 display_df = df_tx.copy()
                 display_df['盈虧比率'] = display_df['盈虧比率'].apply(lambda x: f"{x:.1f}%" if x is not None else "-")
                 display_df['現價'] = display_df['現價'].apply(lambda x: f"{x:.2f}" if x is not None else "-")
                 display_df['成交價'] = display_df['成交價'].apply(lambda x: f"{x:.2f}")
                 
                 st.dataframe(display_df, use_container_width=True)
-                
-                # Calculate holdings with average cost
-                for _, row in df_tx.iterrows():
-                    sym = row['股票代號']
-                    if sym not in holdings:
-                        holdings[sym] = {'qty': 0, 'buy_total': 0, 'buy_qty': 0}
-                    
-                    if row['類型'] == 'BUY':
-                        holdings[sym]['buy_total'] += row['數量'] * row['成交價']
-                        holdings[sym]['buy_qty'] += row['數量']
-                        holdings[sym]['qty'] += row['數量']
-                    else:
-                        holdings[sym]['qty'] -= row['數量']
-                
-                # Calculate average cost for each holding
-                for sym in holdings:
-                    if holdings[sym]['buy_qty'] > 0:
-                        holdings[sym]['avg_cost'] = holdings[sym]['buy_total'] / holdings[sym]['buy_qty']
-                    else:
-                        holdings[sym]['avg_cost'] = 0
         except Exception as e:
             st.error(f"Error: {e}")
 
     # ===== PORTFOLIO =====
-    st.header("💼 投資組合 (現在)")
+    st.header("💼 投資組合")
     
     rows, total_val, total_cost = [], 0, 0
     
-    # Use holdings from transactions, fallback to session
+    # Use holdings from transactions
     display_holdings = holdings.copy() if holdings else {**st.session_state.us_stocks, **st.session_state.hk_stocks}
     
     for ticker, d in display_holdings.items():
         try:
-            if isinstance(d, dict) and 'qty' in d:
-                qty = d['qty']
-                cost = d.get('cost', 0)
-                if qty and qty > 0:
-                    company = get_name(ticker)
-                    price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
-                    if price:
-                        val = qty * price
-                        total = qty * cost
-                        pnl = val - total
-                        pct = (pnl/total*100) if total else 0
-                        
-                        hist = yf.Ticker(ticker).history(period="3mo")['Close']
-                        delta = hist.diff()
-                        gain = delta.where(delta > 0, 0).rolling(14).mean()
-                        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                        rsi = (100 - (100 / (1 + gain/loss))).iloc[-1]
-                        if pd.isna(rsi): rsi = 50
-                        
-                        signal = "🟢 買入" if rsi < 30 else ("🔴 賣出" if rsi > 70 else "🟡 持有")
-                        
-                        rows.append({"股票代號": ticker, "公司名稱": company, "數量": qty, 
-                                   "成本 (港幣)": cost, "現價 (港幣)": price, "現值 (港幣)": val, 
-                                   "盈虧 (港幣)": pnl, "%": pct, "RSI": rsi, "信號": signal})
-                        total_val += val
-                        total_cost += total
+            qty = d.get('qty', 0)
+            if qty and qty > 0:
+                # Use avg_cost from transaction calculation, fallback to session cost
+                cost = d.get('avg_cost', d.get('cost', 0))
+                
+                company = get_name(ticker)
+                price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
+                if price:
+                    val = qty * price
+                    total = qty * cost
+                    pnl = val - total
+                    pct = (pnl/total*100) if total else 0
+                    
+                    hist = yf.Ticker(ticker).history(period="3mo")['Close']
+                    delta = hist.diff()
+                    gain = delta.where(delta > 0, 0).rolling(14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+                    rsi = (100 - (100 / (1 + gain/loss))).iloc[-1]
+                    if pd.isna(rsi): rsi = 50
+                    
+                    signal = "🟢 買入" if rsi < 30 else ("🔴 賣出" if rsi > 70 else "🟡 持有")
+                    
+                    rows.append({"股票代號": ticker, "公司名稱": company, "數量": qty, 
+                               "成本 (港幣)": cost, "現價 (港幣)": price, "現值 (港幣)": val, 
+                               "盈虧 (港幣)": pnl, "%": pct, "RSI": rsi, "信號": signal})
+                    total_val += val
+                    total_cost += total
         except: pass
 
     if rows:
@@ -260,15 +261,13 @@ else:
             "盈虧 (港幣)": "{:.2f}", "%": "{:.1f}%", "RSI": "{:.0f}"
         }), use_container_width=True)
         
-        # Pie chart
         if len(df) > 0:
             fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='組合分配', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
         
-        # P&L Bar Chart
+        # P&L Bar
         st.write("---")
         st.subheader("📊 各股票盈虧")
-        
         if len(df) > 0:
             fig_bar = px.bar(df, x='股票代號', y='%', title='股票盈虧 (%)', 
                            color='%', color_continuous_scale='RdYlGn')
@@ -280,10 +279,10 @@ else:
             fig_bar.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
             st.plotly_chart(fig_bar, use_container_width=True)
     else:
-        st.info("添加股票或交易記錄來查看組合!")
+        st.info("添加交易記錄來查看組合!")
 
     # ===== HISTORICAL =====
-    st.header("📊 每月價值明細 (2026)")
+    st.header("📊 每月價值明細")
     months = [("2026-01-31", "1月"), ("2026-02-28", "2月"), ("2026-03-31", "3月"), ("2026-04-30", "4月")]
     
     hist_rows = []
@@ -293,6 +292,7 @@ else:
                 company = get_name(ticker)
                 current_price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
                 current_val = d['qty'] * current_price
+                cost = d.get('avg_cost', d.get('cost', 0))
                 
                 row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值 (港幣)": round(current_val)}
                 
@@ -302,7 +302,7 @@ else:
                         if not hist.empty:
                             month_price = hist['Close'].iloc[-1]
                             month_val = d['qty'] * month_price
-                            cost_val = d['qty'] * d.get('cost', 0)
+                            cost_val = d['qty'] * cost
                             pct_inc = ((month_val - cost_val) / cost_val * 100) if cost_val else 0
                             row[f"{label} value"] = round(month_val)
                             row[f"{label} %"] = pct_inc
@@ -324,13 +324,11 @@ else:
             elif "%" in col: fmt[col] = "{:.1f}%"
         st.dataframe(hist_df.style.format(fmt), use_container_width=True)
         
-        # Trend line
         total_by_month = {}
         for month_end, label in months:
             total = 0
             for ticker, d in display_holdings.items():
                 if isinstance(d, dict) and d.get('qty', 0) > 0:
-                    cost = d.get('avg_cost', d.get('cost', 0))
                     try:
                         stock = yf.Ticker(ticker)
                         hist = stock.history(start="2026-01-01", end=month_end)
