@@ -243,69 +243,64 @@ else:
                     st.dataframe(display_tx, use_container_width=True)
                 
                 if delete_mode:
-        # Show delete interface
-        st.header("🗑️ 刪除交易記錄")
-        
-        if supabase:
-            try:
-                r = supabase.table('transactions').select('*').eq('username', st.session_state.username).execute()
-                if r.data and len(r.data) > 0:
-                    tx_list = []
-                    for row in r.data:
-                        sym = row['symbol']
+                    st.header("🗑️ 刪除交易記錄")
+                    if supabase:
                         try:
-                            current_price = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
-                        except:
-                            current_price = None
-                        
-                        pl_ratio = None
-                        if row['transaction_type'] == 'BUY' and current_price:
-                            pl_ratio = ((current_price - row['price']) / row['price']) * 100
-                        
-                        tx_list.append({
-                            'id': row['id'],
-                            '股票代號': sym,
-                            '公司': get_name(sym),
-                            '類型': row['transaction_type'],
-                            '數量': row['quantity'],
-                            '成交價': row['price'],
-                            '交易日期': row['transaction_date'],
-                            '現價': current_price,
-                            '盈虧比率': pl_ratio,
-                        })
-                    
-                    df_tx = pd.DataFrame(tx_list)
-                    df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
-                    
-                    st.write(f"**共 {len(df_tx)} 筆記錄**")
-                    
-                    for i, row in df_tx.iterrows():
-                        c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2.5, 1.5, 1.5, 1])
-                        with c1: st.write(f"**{row['股票代號']}**")
-                        with c2: st.write(row['類型'])
-                        with c3: st.write(row['數量'])
-                        with c4: st.write(f"${row['成交價']:.2f}")
-                        with c5: st.write(row['交易日期'])
-                        with c6: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
-                        with c7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
-                        with c8:
-                            if st.button("🗑️ 刪除", key=f"del_{row['id']}"):
-                                try:
-                                    supabase.table('transactions').delete().eq('id', row['id']).execute()
-                                    st.success(f"已刪除 {row['股票代號']}")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
+                            r = supabase.table('transactions').select('*').eq('username', st.session_state.username).execute()
+                            if r.data and len(r.data) > 0:
+                                tx_list = []
+                                for row in r.data:
+                                    sym = row['symbol']
+                                    try:
+                                        current_price = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
+                                    except:
+                                        current_price = None
+                                    
+                                    pl_ratio = None
+                                    if row['transaction_type'] == 'BUY' and current_price:
+                                        pl_ratio = ((current_price - row['price']) / row['price']) * 100
+                                    
+                                    tx_list.append({
+                                        'id': row['id'],
+                                        '股票代號': sym,
+                                        '公司': get_name(sym),
+                                        '類型': row['transaction_type'],
+                                        '數量': row['quantity'],
+                                        '成交價': row['price'],
+                                        '交易日期': row['transaction_date'],
+                                        '現價': current_price,
+                                        '盈虧比率': pl_ratio,
+                                    })
+                                
+                                df_tx = pd.DataFrame(tx_list)
+                                df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
+                                
+                                st.write(f"**共 {len(df_tx)} 筆記錄**")
+                                
+                                for i, row in df_tx.iterrows():
+                                    c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2.5, 1.5, 1.5, 1])
+                                    with c1: st.write(f"**{row['股票代號']}**")
+                                    with c2: st.write(row['類型'])
+                                    with c3: st.write(row['數量'])
+                                    with c4: st.write(f"${row['成交價']:.2f}")
+                                    with c5: st.write(row['交易日期'])
+                                    with c6: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
+                                    with c7: st.write(f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-")
+                                    with c8:
+                                        if st.button("🗑️ 刪除", key=f"del_{row['id']}"):
+                                            try:
+                                                supabase.table('transactions').delete().eq('id', row['id']).execute()
+                                                st.success(f"已刪除 {row['股票代號']}")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error: {e}")
+                            else:
+                                st.info("暫無交易記錄!")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+                    st.stop()
                 else:
-                    st.info("暫無交易記錄!")
-            except Exception as e:
-                st.error(f"Error: {e}")
-        
-        st.stop()  # Stop here if in delete mode
-    else:
-        st.markdown("如需刪除記錄，請選擇上方「🗑️ 刪除交易記錄」")
-        except Exception as e:
-            st.error(f"Error: {e}")
+                    st.markdown("如需刪除記錄，請選擇上方「🗑️ 刪除交易記錄」")
 
     # ===== PORTFOLIO =====
     st.header("💼 投資組合")
