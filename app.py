@@ -197,10 +197,43 @@ else:
                     else:
                         holdings[sym]['avg_cost'] = 0
                 
-                # Display transactions with header and fixed width
+                # Display transactions using st.dataframe for proper alignment
                 st.markdown("**📋 交易記錄**")
-                st.markdown("| 股票代號 | 類型 | 數量 | 成交價 | 交易日期 | 現價 | 盈虧比率 | |")
-                st.markdown("|---------|------|------|-------|----------|------|---------|---|")
+                
+                # Prepare display data with action column
+                display_tx = []
+                for i, row in df_tx.iterrows():
+                    display_tx.append({
+                        '股票代號': row['股票代號'],
+                        '類型': row['類型'],
+                        '數量': row['數量'],
+                        '成交價': f"${row['成交價']:.2f}",
+                        '交易日期': row['交易日期'],
+                        '現價': f"${row['現價']:.2f}" if row['現價'] else "-",
+                        '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
+                        '刪除': '[X]'  # Placeholder for delete
+                    })
+                
+                if display_tx:
+                    df_display = pd.DataFrame(display_tx)
+                    st.dataframe(df_display, use_container_width=True)
+                
+                # Delete buttons below
+                st.write("**操作:**")
+                for i, row in df_tx.iterrows():
+                    c1, c2 = st.columns([4, 1])
+                    with c1: st.write(f"刪除 {row['股票代號']} ({row['交易日期']})")
+                    with c2:
+                        if st.button("X", key=f"del_{i}"):
+                            try:
+                                if i < len(r.data):
+                                    tx_id = r.data[i].get('id')
+                                    if tx_id:
+                                        supabase.table('transactions').delete().eq('id', tx_id).execute()
+                                        st.success(f"Deleted {row['股票代號']}")
+                                        st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
                 
                 df_tx = pd.DataFrame(tx_list)
                 df_tx = df_tx.sort_values(['股票代號', '交易日期'], ascending=[True, False])
