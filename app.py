@@ -33,8 +33,37 @@ HK_NAMES = {
     "1299.HK": "友邦保險", "0941.HK": "中國移動", "2318.HK": "中國人壽",
 }
 
+# Industry classification
+STOCK_INDUSTRY = {
+    # Financials
+    "00005.HK": "FIN", "03988.HK": "FIN", "00011.HK": "FIN",
+    "3328.HK": "FIN", "2388.HK": "FIN", "00016.HK": "FIN",
+    # Properties
+    "1113.HK": "PROP", "00012.HK": "PROP", "00176.HK": "PROP",
+    # Tech/Internet
+    "0700.HK": "TECH", "09988.HK": "TECH", "03690.HK": "TECH",
+    "9618.HK": "TECH", "1024.HK": "TECH", "3669.HK": "TECH",
+    # Telecom
+    "0941.HK": "TLCO", "0728.HK": "TLCO",
+    # Insurance
+    "1299.HK": "INSR", "2318.HK": "INSR", "2601.HK": "INSR",
+    # Energy
+    "00883.HK": "ENGY", "0386.HK": "ENGY", "0857.HK": "ENGY",
+    # Utilities
+    "00002.HK": "UTIL", "00003.HK": "UTIL", "2688.HK": "UTIL",
+    # Hardware
+    "0992.HK": "HW", "1810.HK": "HW", "3690.HK": "HW",
+    # Healthcare
+    "2269.HK": "HLTH", "1801.HK": "HLTH", "0155.HK": "HLTH",
+    # Consumer
+    "0175.HK": "CONS", "2020.HK": "CONS", "291.HK": "CONS",
+}
+
 def get_name(t):
     return HK_NAMES.get(t, t)
+
+def get_industry(t):
+    return STOCK_INDUSTRY.get(t, "-")
 
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
@@ -286,6 +315,7 @@ else:
                     rows.append({
                         "股票代號": ticker,
                         "公司名稱": company,
+                        "行業": get_industry(ticker),
                         "數量": qty,
                         "成本 (港幣)": cost,
                         "現價 (港幣)": price,
@@ -312,8 +342,7 @@ else:
             "現價 (港幣)": "{:.2f}",
             "現值 (港幣)": "{:.2f}",
             "盈虧 (港幣)": "{:.2f}",
-            "%": "{:.1f}%",
-            "RSI": "{:.0f}"
+            "%": "{:.1f}%"
         }), use_container_width=True)
         
         if len(df) > 0:
