@@ -62,6 +62,17 @@ def get_industry(ticker):
             return val
     return "-"
 
+def get_usd_to_hkd_rate():
+    try:
+        r = yf.Ticker("USDHKD=X").history(period="1d")
+        if not r.empty:
+            return r['Close'].iloc[-1]
+    except:
+        pass
+    return 7.75
+
+USD_TO_HKD = get_usd_to_hkd_rate()
+
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
         st.session_state[k] = {} if k in ['us_stocks','hk_stocks'] else False
@@ -218,12 +229,15 @@ else:
                         '盈虧比率': pl_ratio,
                     })
                     
-                    # Holdings
+                    # Holdings - track currency
+                    currency = row.get('currency', 'HKD')
+                    price_in_hkd = row['price'] * (USD_TO_HKD if currency == 'USD' else 1)
+                    
                     if sym not in holdings:
-                        holdings[sym] = {'qty': 0, 'total_buy': 0, 'total_buy_qty': 0}
+                        holdings[sym] = {'qty': 0, 'total_buy': 0, 'total_buy_qty': 0, 'currency': currency}
                     
                     if row['transaction_type'] == 'BUY':
-                        holdings[sym]['total_buy'] += row['quantity'] * row['price']
+                        holdings[sym]['total_buy'] += row['quantity'] * price_in_hkd
                         holdings[sym]['total_buy_qty'] += row['quantity']
                         holdings[sym]['qty'] += row['quantity']
                     else:
@@ -282,7 +296,7 @@ else:
 
     # Portfolio display
     st.header("💼 投資組合")
-    rows, total_val, total_cost = [], 0, 0
+    rows, combined_val, combined_cost = [], 0, 0
     
     display_holdings = holdings.copy() if holdings else {**st.session_state.us_stocks, **st.session_state.hk_stocks}
     
@@ -290,14 +304,16 @@ else:
         try:
             qty = d.get('qty', 0)
             if qty and qty > 0:
-                cost = d.get('avg_cost', d.get('cost', 0))
+                cost_hkd = d.get('avg_cost', d.get('cost', 0))
+                currency = d.get('currency', 'HKD')
                 company = get_name(ticker)
                 price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
                 if price:
-                    val = qty * price
-                    total = qty * cost
-                    pnl = val - total
-                    pct = (pnl/total*100) if total else 0
+                    # Convert to HKD
+                    price_hkd = price * (USD_TO_HKD if currency == 'USD' else 1)
+                    val_hkd = qty * price_hkd
+                    pnl = val_hkd - (qty * cost_hkd)
+                    pct = (pnl/(qty*cost_hkd)*100) if cost_hkd else 0
                     
                     hist = yf.Ticker(ticker).history(period="3mo")['Close']
                     delta = hist.diff()
@@ -313,26 +329,26 @@ else:
                         "股票代號": ticker,
                         "公司名稱": company,
                         "行業": get_industry(ticker),
+                        "貨幣": currency,
                         "數量": qty,
-                        "成本 (港幣)": cost,
-                        "現價 (港幣)": price,
-                        "現值 (港幣)": val,
+                        "成本 (港幣)": cost_hkd,
+                        "現值 (港幣)": val_hkd,
                         "盈虧 (港幣)": pnl,
                         "%": pct,
                         "RSI": rsi,
                         "信號": signal
                     })
-                    total_val += val
-                    total_cost += total
+                    combined_val += val_hkd
+                    combined_cost += qty * cost_hkd
         except:
             pass
 
     if rows:
         df = pd.DataFrame(rows)
         c1, c2, c3 = st.columns(3)
-        c1.metric("總值", f"港幣 {total_val:,.0f}")
-        c2.metric("總成本", f"港幣 {total_cost:,.0f}")
-        c3.metric("總盈虧", f"港幣 {total_val-total_cost:,.0f}")
+        c1.metric("總值 (港幣)", f"港幣 {combined_val:,.0f}")
+        c2.metric("總成本 (港幣)", f"港幣 {combined_cost:,.0f}")
+        c3.metric("總盈虧 (港幣)", f"港幣 {combined_val-combined_cost:,.0f}")
         
         st.dataframe(df.style.format({
             "成本 (港幣)": "{:.2f}",
