@@ -343,8 +343,15 @@ else:
         }), use_container_width=True)
         
         if len(df) > 0:
-            fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='組合分配', hole=0.4)
+            # Stock distribution pie chart
+            fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='股票組合分配', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
+            
+            # Industry distribution pie chart
+            industry_df = df.groupby('行業')['現值 (港幣)'].sum().reset_index()
+            if len(industry_df) > 0:
+                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布', hole=0.4)
+                st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
         st.subheader("📊 各股票盈虧")
