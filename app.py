@@ -33,37 +33,34 @@ HK_NAMES = {
     "1299.HK": "友邦保險", "0941.HK": "中國移動", "2318.HK": "中國人壽",
 }
 
-# Industry classification
+# Industry classification - HK stocks
 STOCK_INDUSTRY = {
-    # Financials
-    "00005.HK": "FIN", "03988.HK": "FIN", "00011.HK": "FIN",
-    "3328.HK": "FIN", "2388.HK": "FIN", "00016.HK": "FIN",
-    # Properties
-    "1113.HK": "PROP", "00012.HK": "PROP", "00176.HK": "PROP",
-    # Tech/Internet
-    "0700.HK": "TECH", "09988.HK": "TECH", "03690.HK": "TECH",
-    "9618.HK": "TECH", "1024.HK": "TECH", "3669.HK": "TECH",
-    # Telecom
-    "0941.HK": "TLCO", "0728.HK": "TLCO",
-    # Insurance
-    "1299.HK": "INSR", "2318.HK": "INSR", "2601.HK": "INSR",
-    # Energy
-    "00883.HK": "ENGY", "0386.HK": "ENGY", "0857.HK": "ENGY",
-    # Utilities
-    "00002.HK": "UTIL", "00003.HK": "UTIL", "2688.HK": "UTIL",
-    # Hardware
-    "0992.HK": "HW", "1810.HK": "HW", "3690.HK": "HW",
-    # Healthcare
-    "2269.HK": "HLTH", "1801.HK": "HLTH", "0155.HK": "HLTH",
-    # Consumer
-    "0175.HK": "CONS", "2020.HK": "CONS", "291.HK": "CONS",
+    "00002.HK": "UTIL", "00003.HK": "UTIL", "00005.HK": "FIN",
+    "00011.HK": "FIN", "00012.HK": "PROP", "00016.HK": "PROP",
+    "00175.HK": "CONS", "00992.HK": "HW", "01801.HK": "HLTH",
+    "01810.HK": "HW", "02020.HK": "CONS", "02250.HK": "HLTH",
+    "02269.HK": "HLTH", "03690.HK": "TECH", "0386.HK": "ENGY",
+    "03988.HK": "FIN", "06808.HK": "PROP", "0700.HK": "TECH",
+    "0728.HK": "TLCO", "0857.HK": "ENGY", "0883.HK": "ENGY",
+    "0941.HK": "TLCO", "09988.HK": "TECH", "1024.HK": "TECH",
+    "1109.HK": "ENGY", "1113.HK": "PROP", "1177.HK": "HLTH",
+    "1299.HK": "INSR", "1388.HK": "CONS", "1398.HK": "FIN",
+    "2318.HK": "INSR", "2319.HK": "TECH", "2388.HK": "FIN",
+    "2601.HK": "INSR", "2688.HK": "UTIL", "2888.HK": "FIN",
+    "291.HK": "CONS", "3328.HK": "FIN", "3669.HK": "TECH",
+    "9618.HK": "TECH", "0386.HK": "ENGY", "0883.HK": "ENGY",
 }
 
 def get_name(t):
     return HK_NAMES.get(t, t)
 
-def get_industry(t):
-    return STOCK_INDUSTRY.get(t, "-")
+def get_industry(ticker):
+    # Normalize ticker format (remove .HK suffix, leading zeros)
+    t = ticker.replace(".HK", "").lstrip("0")
+    for key, val in STOCK_INDUSTRY.items():
+        if key.replace(".HK", "").lstrip("0") == t:
+            return val
+    return "-"
 
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
