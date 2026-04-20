@@ -217,11 +217,13 @@ else:
                     if row['transaction_type'] == 'BUY' and current_price:
                         pl_ratio = ((current_price - row['price']) / row['price']) * 100
                     
+                    currency = row.get('currency', 'HKD')
                     tx_list.append({
                         'id': row['id'],
                         '股票代號': sym,
                         '公司': get_name(sym),
                         '類型': row['transaction_type'],
+                        'currency': currency,
                         '數量': row['quantity'],
                         '成交價': row['price'],
                         '交易日期': row['transaction_date'],
