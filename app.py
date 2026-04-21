@@ -7,6 +7,7 @@ import pandas as pd
 import json
 import os
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import date
 
 URL = os.environ.get("SUPABASE_URL", "")
@@ -567,22 +568,41 @@ else:
             df = pd.DataFrame(rows)
         
         if len(df) > 0:
-            # Stock distribution pie chart
-            fig = px.pie(df, values='現值 (港幣)', names='股票代號', title='股票組合分配', hole=0.4)
+            # Combined chart data (convert HK to USD)
+            combined_chart_data = []
+            for item in rows:
+                if item['貨幣'] == 'USD':
+                    combined_chart_data.append({
+                        "股票代號": item['股票代號'],
+                        "Value_USD": item['現值 (港幣)'] / EXCHANGE_RATE,
+                        "PnL_USD": item['盈虧 (港幣)'] / EXCHANGE_RATE
+                    })
+                else:
+                    combined_chart_data.append({
+                        "股票代號": item['股票代號'],
+                        "Value_USD": item['現值 (港幣)'] / EXCHANGE_RATE,
+                        "PnL_USD": item['盈虧 (港幣)'] / EXCHANGE_RATE
+                    })
+            
+            chart_df = pd.DataFrame(combined_chart_data)
+            
+            # Pie chart - Allocation (in USD)
+            fig = px.pie(chart_df, values='Value_USD', names='股票代號', title='Portfolio Allocation (USD)', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
             
             # Industry distribution pie chart
             industry_df = df.groupby('行業')['現值 (港幣)'].sum().reset_index()
+            industry_df['Value_USD'] = industry_df['現值 (港幣)'] / EXCHANGE_RATE
             if len(industry_df) > 0:
-                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布', hole=0.4)
+                fig2 = px.pie(industry_df, values='Value_USD', names='行業', title='Industry Allocation (USD)', hole=0.4)
                 st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
-        st.subheader("📊 各股票盈虧")
+        st.subheader("📊 P&L by Stock (USD)")
         
         if len(df) > 0:
-            fig_bar = px.bar(df, x='股票代號', y='%', title='股票盈虧 (%)',
-                           color='%', color_continuous_scale='RdYlGn')
+            fig_bar = px.bar(chart_df, x='股票代號', y='PnL_USD', title='Profit/Loss by Stock (USD)',
+                           color='PnL_USD', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_bar.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
@@ -594,6 +614,45 @@ else:
         st.info("添加股票或交易記錄來查看組合!")
 
     # Monthly historical
+
+# ===== TECHNICAL ANALYSIS =====
+st.header("📈 Technical Analysis")
+
+all_tickers = [h["股票代號"] for h in us_rows] + [h["股票代號"] for h in hk_rows]
+
+if all_tickers:
+    selected_stock = st.selectbox("Select Stock to Analyze", all_tickers)
+    
+    if selected_stock:
+        df = get_stock_data_cached(selected_stock)
+        if df is not None:
+            # Calculate RSI
+            df['RSI'] = calculate_rsi(df['Close'])
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Price chart
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df['Open'],
+                    high=df['High'],
+                    low=df['Low'],
+                    close=df['Close'],
+                    name='Price'
+                ))
+                fig.update_layout(title=f"{selected_stock} Price", height=300)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # RSI Chart
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=df.index, y=df['RSI'], name='RSI', line=dict(color='purple', width=2)))
+                fig2.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
+                fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
+                fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
+                st.plotly_chart(fig2, use_container_width=True)
     st.header("📊 每月價值明細")
     months = [("2026-01-31", "1月"), ("2026-02-28", "2月"), ("2026-03-31", "3月"), ("2026-04-30", "4月")]
     
