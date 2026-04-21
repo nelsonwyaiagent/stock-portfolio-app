@@ -524,20 +524,47 @@ else:
         c3.metric("Grand Total P&L (USD)", f"${grand_total_pnl_usd:,.0f}", f"{grand_total_pnl_percent:.1f}%")
         c4.metric("Total Holdings", len(us_rows) + len(hk_rows))
         
-        # Combine rows for display
+        # Display separate tables for US and HK stocks
+        st.markdown("---")
+        st.subheader("📊 Holdings Detail")
+        
+        col_us, col_hk = st.columns(2)
+        
+        with col_us:
+            st.markdown("### 🇺🇸 US Stocks")
+            if us_rows:
+                df_us = pd.DataFrame(us_rows)
+                st.dataframe(df_us.style.format({
+                    "成本 (港幣)": "${:.2f}",
+                    "現值 (港幣)": "${:.2f}",
+                    "盈虧 (港幣)": "${:.2f}",
+                    "%": "{:.1f}%",
+                    "週變化 %": "{:.1f}%",
+                    "RSI": "{:.0f}"
+                }), use_container_width=True)
+            else:
+                st.info("No US stocks data available.")
+        
+        with col_hk:
+            st.markdown("### 🇭🇰 HK Stocks")
+            if hk_rows:
+                df_hk = pd.DataFrame(hk_rows)
+                st.dataframe(df_hk.style.format({
+                    "成本 (港幣)": "HK${:.2f}",
+                    "現值 (港幣)": "HK${:.2f}",
+                    "盈虧 (港幣)": "HK${:.2f}",
+                    "%": "{:.1f}%",
+                    "週變化 %": "{:.1f}%",
+                    "RSI": "{:.0f}"
+                }), use_container_width=True)
+            else:
+                st.info("No HK stocks data available.")
+        
+        # Combine rows for charts
         rows = us_rows + hk_rows
         
         if rows:
             df = pd.DataFrame(rows)
-        
-        st.dataframe(df.style.format({
-            "成本 (港幣)": "{:.2f}",
-            "現值 (港幣)": "{:.2f}",
-            "盈虧 (港幣)": "{:.2f}",
-            "%": "{:.1f}%",
-            "週變化 %": "{:.1f}%",
-            "RSI": "{:.0f}"
-        }), use_container_width=True)
         
         if len(df) > 0:
             # Stock distribution pie chart
