@@ -414,7 +414,10 @@ else:
 
     # Portfolio display
     st.header("💼 投資組合")
-    rows, combined_val, combined_cost = [], 0, 0
+    
+    # Separate US and HK holdings
+    us_rows, us_total_val, us_total_cost = [], 0, 0
+    hk_rows, hk_total_val, hk_total_cost = [], 0, 0
     
     display_holdings = holdings.copy() if holdings else {**st.session_state.us_stocks, **st.session_state.hk_stocks}
     
@@ -428,7 +431,11 @@ else:
                 price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
                 if price:
                     # Convert to HKD
-                    price_hkd = price * (EXCHANGE_RATE if currency == 'USD' else 1)
+                    if currency == 'USD':
+                        price_hkd = price * EXCHANGE_RATE
+                    else:
+                        price_hkd = price
+                    
                     val_hkd = qty * price_hkd
                     pnl = val_hkd - (qty * cost_hkd)
                     pct = (pnl/(qty*cost_hkd)*100) if cost_hkd else 0
@@ -467,7 +474,7 @@ else:
                     else:
                         signal = "🟡 持有"
                     
-                    rows.append({
+                    row_data = {
                         "股票代號": ticker,
                         "公司名稱": company,
                         "行業": get_industry(ticker),
@@ -480,18 +487,36 @@ else:
                         "週變化 %": weekly_change,
                         "RSI": rsi,
                         "信號": signal
-                    })
-                    combined_val += val_hkd
-                    combined_cost += qty * cost_hkd
+                    }
+                    
+                    # Append to separate list based on currency
+                    if currency == 'USD':
+                        us_rows.append(row_data)
+                        us_total_val += val_hkd
+                        us_total_cost += qty * cost_hkd
+                    else:
+                        hk_rows.append(row_data)
+                        hk_total_val += val_hkd
+                        hk_total_cost += qty * cost_hkd
         except:
             pass
 
-    if rows:
-        df = pd.DataFrame(rows)
+    # Combined totals
+    combined_val = us_total_val + hk_total_val
+    combined_cost = us_total_cost + hk_total_cost
+
+    # Display summary
+    if us_rows or hk_rows:
         c1, c2, c3 = st.columns(3)
         c1.metric("總值 (港幣)", f"港幣 {combined_val:,.0f}")
         c2.metric("總成本 (港幣)", f"港幣 {combined_cost:,.0f}")
         c3.metric("總盈虧 (港幣)", f"港幣 {combined_val-combined_cost:,.0f}")
+        
+        # Combine rows for display
+        rows = us_rows + hk_rows
+        
+        if rows:
+            df = pd.DataFrame(rows)
         
         st.dataframe(df.style.format({
             "成本 (港幣)": "{:.2f}",
