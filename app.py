@@ -507,10 +507,22 @@ else:
 
     # Display summary
     if us_rows or hk_rows:
-        c1, c2, c3 = st.columns(3)
-        c1.metric("總值 (港幣)", f"港幣 {combined_val:,.0f}")
-        c2.metric("總成本 (港幣)", f"港幣 {combined_cost:,.0f}")
-        c3.metric("總盈虧 (港幣)", f"港幣 {combined_val-combined_cost:,.0f}")
+        # Calculate Grand Totals in USD
+        us_total_val_usd = us_total_val / EXCHANGE_RATE  # Convert US HKD to USD
+        us_total_cost_usd = us_total_cost / EXCHANGE_RATE
+        hk_total_val_usd = hk_total_val  # HK is already in HKD, treat as USD for reporting if pegged
+        hk_total_cost_usd = hk_total_cost
+        
+        grand_total_val_usd = us_total_val_usd + hk_total_val_usd
+        grand_total_cost_usd = us_total_cost_usd + hk_total_cost_usd
+        grand_total_pnl_usd = grand_total_val_usd - grand_total_cost_usd
+        grand_total_pnl_percent = (grand_total_pnl_usd / grand_total_cost_usd * 100) if grand_total_cost_usd > 0 else 0
+        
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Grand Total Value (USD)", f"${grand_total_val_usd:,.0f}")
+        c2.metric("Grand Total Cost (USD)", f"${grand_total_cost_usd:,.0f}")
+        c3.metric("Grand Total P&L (USD)", f"${grand_total_pnl_usd:,.0f}", f"{grand_total_pnl_percent:.1f}%")
+        c4.metric("Total Holdings", len(us_rows) + len(hk_rows))
         
         # Combine rows for display
         rows = us_rows + hk_rows
