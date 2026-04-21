@@ -311,14 +311,18 @@ else:
     if tx_list:
         display_tx = []
         for row in tx_list:
+            curr = row.get('currency', 'HKD')
+            price_symbol = "$" if curr == 'USD' else "港幣"
             display_tx.append({
                 '股票代號': row['股票代號'],
+                '貨幣': curr,
                 '類型': row['類型'],
                 '數量': row['數量'],
-                '成交價': f"${row['成交價']:.2f}",
-                '成交總額': f"${row['數量'] * row['成交價']:.2f}",
+                '成交價': f"{price_symbol}{row['成交價']:.2f}",
+                '成交總額': f"{curr} {row['數量'] * row['成交價']:.2f}",
                 '交易日期': row['交易日期'],
-                '現價': f"${row['現價']:.2f}" if row['現價'] else "-",
+                '現價': f"{price_symbol}{row['現價']:.2f}" if row['現價'] else "-",
+                '現值(HKD)': f"港幣{row['現價']*USD_TO_HKD:.2f}" if row['現價'] and curr == 'USD' else "-",
                 '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
             })
         st.dataframe(display_tx, use_container_width=True)
@@ -329,18 +333,24 @@ else:
         st.write(f"**共 {len(tx_list)} 筆記錄**")
         
         for row in tx_list:
-            c1, c2, c3, c4, c5, c6, c7, c8 = st.columns([2, 1, 1, 1.5, 2, 2, 1.5, 1])
+            curr = row.get('currency', 'HKD')
+            price_symbol = "$" if curr == 'USD' else "港幣"
+            c1, c2, c3, c4, c5, c6, c7, c8, c9 = st.columns([2, 1, 0.8, 1.5, 1.5, 2, 2, 2, 1])
             with c1: st.write(f"**{row['股票代號']}**")
             with c2: st.write(row['類型'])
-            with c3: st.write(row['數量'])
-            with c4: st.write(f"${row['成交價']:.2f}")
-            with c5: st.write(f"${row['數量'] * row['成交價']:.2f}")
+            with c3: st.write(f"[{curr}]")
+            with c4: st.write(f"{price_symbol}{row['成交價']:.2f}")
+            with c5: st.write(f"{curr} {row['數量'] * row['成交價']:.2f}")
             with c6: st.write(row['交易日期'])
-            with c7: st.write(f"${row['現價']:.2f}" if row['現價'] else "-")
-            with c8:
+            with c7: st.write(f"{price_symbol}{row['現價']:.2f}" if row['現價'] else "-")
+            with c8: st.write(f"{row['盈虧比率']:.1f}%" if row.get('盈虧比率') else "-")
+            with c9:
                 if st.button("🗑️", key=f"del_{row['id']}"):
                     try:
-                        supabase.table('transactions').delete().eq('id', row['id']).execute()
+                        if curr == 'USD':
+                            supabase.table('us_transactions').delete().eq('id', row['id']).execute()
+                        else:
+                            supabase.table('transactions').delete().eq('id', row['id']).execute()
                         st.success(f"已刪除 {row['股票代號']}")
                         st.rerun()
                     except Exception as e:
