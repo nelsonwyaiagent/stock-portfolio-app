@@ -62,16 +62,27 @@ def get_industry(ticker):
             return val
     return "-"
 
-def get_usd_to_hkd_rate():
+@st.cache_data(ttl=3600)
+def get_exchange_rate():
+    """Fetch live USD to HKD exchange rate"""
     try:
-        r = yf.Ticker("USDHKD=X").history(period="1d")
-        if not r.empty:
-            return r['Close'].iloc[-1]
+        rate = yf.Ticker("USDHKD=X").history(period="1d")['Close'].iloc[-1]
+        return rate
     except:
-        pass
-    return 7.75
+        return 7.82  # Fallback pegged rate
 
-USD_TO_HKD = get_usd_to_hkd_rate()
+# Get exchange rate at app start
+EXCHANGE_RATE = get_exchange_rate()
+
+@st.cache_data(ttl=3600)
+def get_stock_data_cached(ticker, period="1y"):
+    """Fetch stock data from Yahoo Finance"""
+    try:
+        stock = yf.Ticker(ticker)
+        df = stock.history(period=period)
+        return df
+    except Exception as e:
+        return None
 
 # Improved RSI calculation
 def calculate_rsi(prices, length=14):
@@ -201,6 +212,10 @@ else:
     # View mode
     st.sidebar.write("---")
     st.sidebar.markdown("### 📂 頁面")
+    # Display exchange rate
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**💱 匯率:** 1 USD = {EXCHANGE_RATE:.4f} HKD")
+    
     view_mode = st.sidebar.radio("選擇視圖", ["📈 投資組合", "🗑️ 刪除交易記錄"], index=0)
     delete_mode = view_mode == "🗑️ 刪除交易記錄"
 
@@ -302,11 +317,11 @@ else:
                     
                     pl_ratio = None
                     price_usd = row['price_usd']
-                    price_hkd = price_usd * USD_TO_HKD
+                    price_hkd = price_usd * EXCHANGE_RATE
                     
                     if row['transaction_type'] == 'BUY' and current_price:
                         # Compare in HKD
-                        current_hkd = current_price * USD_TO_HKD
+                        current_hkd = current_price * EXCHANGE_RATE
                         pl_ratio = ((current_hkd - price_hkd) / price_hkd) * 100
                     
                     currency = 'USD'
@@ -321,7 +336,7 @@ else:
                         '成交價(HKD)': price_hkd,
                         '交易日期': row['transaction_date'],
                         '現價': current_price,
-                        '現價(HKD)': current_price * USD_TO_HKD if current_price else None,
+                        '現價(HKD)': current_price * EXCHANGE_RATE if current_price else None,
                         '盈虧比率': pl_ratio,
                     })
                     
@@ -360,7 +375,7 @@ else:
                 '成交總額': f"{curr} {row['數量'] * row['成交價']:.2f}",
                 '交易日期': row['交易日期'],
                 '現價': f"{price_symbol}{row['現價']:.2f}" if row['現價'] else "-",
-                '現值(HKD)': f"港幣{row['現價']*USD_TO_HKD:.2f}" if row['現價'] and curr == 'USD' else "-",
+                '現值(HKD)': f"港幣{row['現價']*EXCHANGE_RATE:.2f}" if row['現價'] and curr == 'USD' else "-",
                 '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
             })
         st.dataframe(display_tx, use_container_width=True)
@@ -413,7 +428,7 @@ else:
                 price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
                 if price:
                     # Convert to HKD
-                    price_hkd = price * (USD_TO_HKD if currency == 'USD' else 1)
+                    price_hkd = price * (EXCHANGE_RATE if currency == 'USD' else 1)
                     val_hkd = qty * price_hkd
                     pnl = val_hkd - (qty * cost_hkd)
                     pct = (pnl/(qty*cost_hkd)*100) if cost_hkd else 0
