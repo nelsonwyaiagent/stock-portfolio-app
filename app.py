@@ -73,6 +73,44 @@ def get_usd_to_hkd_rate():
 
 USD_TO_HKD = get_usd_to_hkd_rate()
 
+# Improved RSI calculation
+def calculate_rsi(prices, length=14):
+    """Calculate RSI manually"""
+    delta = prices.diff()
+    gain = delta.where(delta > 0, 0).rolling(window=length).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=length).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Better signal based on RSI
+def get_signal(rsi):
+    """Generate buy/sell signal based on RSI"""
+    if rsi < 30:
+        return "🟢 強買", "Strong Buy"
+    elif rsi < 40:
+        return "🟢 買", "Buy"
+    elif rsi > 70:
+        return "🔴 強賣", "Strong Sell"
+    elif rsi > 60:
+        return "🟡 留意", "Watch"
+    else:
+        return "🟡 持有", "Hold"
+
+# Get weekly change
+def get_weekly_change(ticker):
+    """Calculate weekly price change"""
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="1w")
+        if len(hist) > 1:
+            week_start = hist['Close'].iloc[0]
+            week_end = hist['Close'].iloc[-1]
+            return ((week_end - week_start) / week_start) * 100
+    except:
+        pass
+    return 0
+
 for k in ['logged_in','username','us_stocks','hk_stocks']:
     if k not in st.session_state:
         st.session_state[k] = {} if k in ['us_stocks','hk_stocks'] else False
@@ -380,15 +418,39 @@ else:
                     pnl = val_hkd - (qty * cost_hkd)
                     pct = (pnl/(qty*cost_hkd)*100) if cost_hkd else 0
                     
+                    # Calculate weekly change
+                    weekly_change = 0
+                    try:
+                        stock = yf.Ticker(ticker)
+                        hist = stock.history(period="1w")
+                        if len(hist) > 1:
+                            week_start = hist['Close'].iloc[0]
+                            week_end = hist['Close'].iloc[-1]
+                            weekly_change = ((week_end - week_start) / week_start) * 100
+                    except:
+                        pass
+                    
+                    # Calculate RSI
                     hist = yf.Ticker(ticker).history(period="3mo")['Close']
                     delta = hist.diff()
                     gain = delta.where(delta > 0, 0).rolling(14).mean()
                     loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                    rsi = (100 - (100 / (1 + gain/loss))).iloc[-1]
+                    rs = gain / loss
+                    rsi = (100 - (100 / (1 + rs))).iloc[-1]
                     if pd.isna(rsi):
                         rsi = 50
                     
-                    signal = "🟢 買入" if rsi < 30 else ("🔴 賣出" if rsi > 70 else "🟡 持有")
+                    # Better signal based on RSI and weekly change
+                    if rsi < 30:
+                        signal = "🟢 強買"
+                    elif rsi < 40:
+                        signal = "🟢 買"
+                    elif rsi > 70:
+                        signal = "🔴 強賣"
+                    elif rsi > 60:
+                        signal = "🟡 留意"
+                    else:
+                        signal = "🟡 持有"
                     
                     rows.append({
                         "股票代號": ticker,
@@ -400,6 +462,7 @@ else:
                         "現值 (港幣)": val_hkd,
                         "盈虧 (港幣)": pnl,
                         "%": pct,
+                        "週變化 %": weekly_change,
                         "RSI": rsi,
                         "信號": signal
                     })
@@ -417,10 +480,11 @@ else:
         
         st.dataframe(df.style.format({
             "成本 (港幣)": "{:.2f}",
-            "現價 (港幣)": "{:.2f}",
             "現值 (港幣)": "{:.2f}",
             "盈虧 (港幣)": "{:.2f}",
-            "%": "{:.1f}%"
+            "%": "{:.1f}%",
+            "週變化 %": "{:.1f}%",
+            "RSI": "{:.0f}"
         }), use_container_width=True)
         
         if len(df) > 0:
