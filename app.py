@@ -204,9 +204,18 @@ else:
     
     if supabase:
         try:
-            r = supabase.table('transactions').select('*').eq('username', st.session_state.username).execute()
-            if r.data and len(r.data) > 0:
-                for row in r.data:
+            # Query HK transactions (existing table)
+            r_hk = supabase.table('transactions').select('*').eq('username', st.session_state.username).execute()
+            
+            # Query US transactions (new table)
+            try:
+                r_us = supabase.table('us_transactions').select('*').eq('username', st.session_state.username).execute()
+            except:
+                r_us = type('obj', (object,), {'data': []})()
+            
+            # Process HK transactions
+            if r_hk.data and len(r_hk.data) > 0:
+                for row in r_hk.data:
                     sym = row['symbol']
                     try:
                         current_price = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
@@ -214,8 +223,9 @@ else:
                         current_price = None
                     
                     pl_ratio = None
+                    price_hkd = row['price']
                     if row['transaction_type'] == 'BUY' and current_price:
-                        pl_ratio = ((current_price - row['price']) / row['price']) * 100
+                        pl_ratio = ((current_price - price_hkd) / price_hkd) * 100
                     
                     currency = row.get('currency', 'HKD')
                     tx_list.append({
@@ -225,16 +235,14 @@ else:
                         '類型': row['transaction_type'],
                         'currency': currency,
                         '數量': row['quantity'],
-                        '成交價': row['price'],
+                        '成交價': price_hkd,
                         '交易日期': row['transaction_date'],
                         '現價': current_price,
                         '盈虧比率': pl_ratio,
                     })
                     
-                    # Holdings - track currency
-                    currency = row.get('currency', 'HKD')
-                    price_in_hkd = row['price'] * (USD_TO_HKD if currency == 'USD' else 1)
-                    
+                    # Holdings
+                    price_in_hkd = price_hkd
                     if sym not in holdings:
                         holdings[sym] = {'qty': 0, 'total_buy': 0, 'total_buy_qty': 0, 'currency': currency}
                     
@@ -244,13 +252,58 @@ else:
                         holdings[sym]['qty'] += row['quantity']
                     else:
                         holdings[sym]['qty'] -= row['quantity']
-                
-                # Avg cost
-                for sym in holdings:
-                    if holdings[sym]['total_buy_qty'] > 0:
-                        holdings[sym]['avg_cost'] = holdings[sym]['total_buy'] / holdings[sym]['total_buy_qty']
+            
+            # Process US transactions
+            if r_us.data and len(r_us.data) > 0:
+                for row in r_us.data:
+                    sym = row['symbol']
+                    try:
+                        current_price = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
+                    except:
+                        current_price = None
+                    
+                    pl_ratio = None
+                    price_usd = row['price_usd']
+                    price_hkd = price_usd * USD_TO_HKD
+                    
+                    if row['transaction_type'] == 'BUY' and current_price:
+                        # Compare in HKD
+                        current_hkd = current_price * USD_TO_HKD
+                        pl_ratio = ((current_hkd - price_hkd) / price_hkd) * 100
+                    
+                    currency = 'USD'
+                    tx_list.append({
+                        'id': row['id'],
+                        '股票代號': sym,
+                        '公司': get_name(sym) if get_name(sym) != sym else sym,
+                        '類型': row['transaction_type'],
+                        'currency': currency,
+                        '數量': row['quantity'],
+                        '成交價': price_usd,
+                        '成交價(HKD)': price_hkd,
+                        '交易日期': row['transaction_date'],
+                        '現價': current_price,
+                        '現價(HKD)': current_price * USD_TO_HKD if current_price else None,
+                        '盈虧比率': pl_ratio,
+                    })
+                    
+                    # Holdings
+                    if sym not in holdings:
+                        holdings[sym] = {'qty': 0, 'total_buy': 0, 'total_buy_qty': 0, 'currency': currency}
+                    
+                    if row['transaction_type'] == 'BUY':
+                        holdings[sym]['total_buy'] += row['quantity'] * price_hkd
+                        holdings[sym]['total_buy_qty'] += row['quantity']
+                        holdings[sym]['qty'] += row['quantity']
                     else:
-                        holdings[sym]['avg_cost'] = 0
+                        holdings[sym]['qty'] -= row['quantity']
+            
+            # Avg cost in HKD
+            for sym in holdings:
+                if holdings[sym]['total_buy_qty'] > 0:
+                    holdings[sym]['avg_cost'] = holdings[sym]['total_buy'] / holdings[sym]['total_buy_qty']
+                else:
+                    holdings[sym]['avg_cost'] = 0
         except Exception as e:
             st.error(f"Error: {e}")
 
