@@ -8,7 +8,7 @@ import json
 import os
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date
+from datetime import date, timedelta
 
 URL = os.environ.get("SUPABASE_URL", "")
 KEY = os.environ.get("SUPABASE_KEY", "")
@@ -51,6 +51,30 @@ STOCK_INDUSTRY = {
     "291.HK": "CONS", "3328.HK": "FIN", "3669.HK": "TECH",
     "9618.HK": "TECH", "0386.HK": "ENGY", "0883.HK": "ENGY",
 }
+
+def get_last_n_months(n=6):
+    """Generate list of (month_end_date, month_label) for last n months"""
+    months = []
+    for i in range(n-1, -1, -1):
+        # Calculate month end date
+        if i == 0:
+            # Current month - use today
+            d = datetime.now()
+        else:
+            # Go back i months
+            from datetime import datetime
+            d = datetime.now() - timedelta(days=i*30)
+        
+        # Get last day of month
+        if d.month == 12:
+            next_month = datetime(d.year+1, 1, 1)
+        else:
+            next_month = datetime(d.year, d.month+1, 1)
+        month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+        month_label = d.strftime("%m月")
+        
+        months.append((month_end, month_label))
+    return months
 
 def get_name(t):
     return HK_NAMES.get(t, t)
@@ -659,7 +683,7 @@ if all_tickers:
                 fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
                 st.plotly_chart(fig2, use_container_width=True)
     st.header("📊 每月價值明細 / Monthly Value")
-    months = [("2026-01-31", "1月"), ("2026-02-28", "2月"), ("2026-03-31", "3月"), ("2026-04-30", "4月")]
+    months = get_last_n_months(6)
     
     hist_rows = []
     for ticker, d in display_holdings.items():
@@ -674,7 +698,7 @@ if all_tickers:
                 
                 for month_end, label in months:
                     try:
-                        hist = yf.Ticker(ticker).history(start="2026-01-01", end=month_end)
+                        hist = yf.Ticker(ticker).history(start="2025-07-01", end=month_end)
                         if not hist.empty:
                             month_price = hist['Close'].iloc[-1]
                             month_val = d['qty'] * month_price
@@ -710,7 +734,7 @@ if all_tickers:
                 if isinstance(d, dict) and d.get('qty', 0) > 0:
                     try:
                         stock = yf.Ticker(ticker)
-                        hist = stock.history(start="2026-01-01", end=month_end)
+                        hist = stock.history(start="2025-07-01", end=month_end)
                         if not hist.empty:
                             total += d['qty'] * hist['Close'].iloc[-1]
                     except:
