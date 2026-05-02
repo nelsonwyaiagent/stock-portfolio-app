@@ -515,17 +515,17 @@ else:
         grand_total_pnl_percent = (grand_total_pnl / combined_cost * 100) if combined_cost > 0 else 0
         
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("總值", f"{combined_val:,.0f}")
-        c2.metric("總成本", f"{combined_cost:,.0f}")
-        c3.metric("總盈虧", f"{grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
-        c4.metric("總持股", len(us_rows) + len(hk_rows))
+        c1.metric("總值 / Total Value", f"{combined_val:,.0f}")
+        c2.metric("總成本 / Total Cost", f"{combined_cost:,.0f}")
+        c3.metric("總盈虧 / Total P&L", f"{grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
+        c4.metric("總持股 / Holdings", len(us_rows) + len(hk_rows))
         
         # Display tables - HK first, then US (stacked)
         st.markdown("---")
         st.subheader("📊 Holdings Detail")
         
         # HK Stocks first
-        st.markdown("### 🇭🇰 港股")
+        st.markdown("### 🇭🇰 港股 / HK Stocks")
         if hk_rows:
             df_hk = pd.DataFrame(hk_rows)
             st.dataframe(df_hk.style.format({
@@ -540,7 +540,7 @@ else:
             st.info("無港股數據")
         
         # Then US Stocks
-        st.markdown("### 🇺🇸 美股")
+        st.markdown("### 🇺🇸 美股 / US Stocks")
         if us_rows:
             df_us = pd.DataFrame(us_rows)
             st.dataframe(df_us.style.format({
@@ -573,20 +573,20 @@ else:
             chart_df = pd.DataFrame(combined_chart_data)
             
             # Pie chart - Allocation (in HKD)
-            fig = px.pie(chart_df, values='Value_HKD', names='股票代號', title='股票組合分配', hole=0.4)
+            fig = px.pie(chart_df, values='Value_HKD', names='股票代號', title='股票組合分配 / Portfolio Allocation', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
             
             # Industry distribution pie chart
             industry_df = df.groupby('行業')['現值'].sum().reset_index()
             if len(industry_df) > 0:
-                fig2 = px.pie(industry_df, values='現值', names='行業', title='行業分布', hole=0.4)
+                fig2 = px.pie(industry_df, values='現值', names='行業', title='行業分布 / Industry Allocation', hole=0.4)
                 st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
-        st.subheader("📊 各股票盈虧")
+        st.subheader("📊 各股票盈虧 / P&L by Stock")
         
         if len(df) > 0:
-            fig_bar = px.bar(df, x='股票代號', y='盈虧', title='各股票盈虧',
+            fig_bar = px.bar(df, x='股票代號', y='盈虧', title='各股票盈虧 / P&L by Stock',
                            color='盈虧', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
@@ -598,7 +598,7 @@ else:
         
         # P/L in percentage chart
         if len(df) > 0:
-            fig_pct = px.bar(df, x='股票代號', y='%', title='各股票盈虧 (%)',
+            fig_pct = px.bar(df, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
                            color='%', color_continuous_scale='RdYlGn')
             fig_pct.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
@@ -658,7 +658,7 @@ if all_tickers:
                 fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
                 fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
                 st.plotly_chart(fig2, use_container_width=True)
-    st.header("📊 每月價值明細")
+    st.header("📊 每月價值明細 / Monthly Value")
     months = [("2026-01-31", "1月"), ("2026-02-28", "2月"), ("2026-03-31", "3月"), ("2026-04-30", "4月")]
     
     hist_rows = []
@@ -718,5 +718,5 @@ if all_tickers:
             total_by_month[label] = total
         
         chart_df = pd.DataFrame(list(total_by_month.items()), columns=["月份", "總值"])
-        fig_line = px.line(chart_df, x='月份', y='總值', title='組合價值趨勢', markers=True)
+        fig_line = px.line(chart_df, x='月份', y='總值', title='組合價值趨勢 / Portfolio Trend', markers=True)
         st.plotly_chart(fig_line, use_container_width=True)
