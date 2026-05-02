@@ -515,9 +515,9 @@ else:
         grand_total_pnl_percent = (grand_total_pnl / combined_cost * 100) if combined_cost > 0 else 0
         
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("總值 (港幣)", f"港幣 {combined_val:,.0f}")
-        c2.metric("總成本 (港幣)", f"港幣 {combined_cost:,.0f}")
-        c3.metric("總盈虧 (港幣)", f"港幣 {grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
+        c1.metric("總值", f"{combined_val:,.0f}")
+        c2.metric("總成本", f"{combined_cost:,.0f}")
+        c3.metric("總盈虧", f"{grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
         c4.metric("總持股", len(us_rows) + len(hk_rows))
         
         # Display tables - HK first, then US (stacked)
@@ -529,9 +529,9 @@ else:
         if hk_rows:
             df_hk = pd.DataFrame(hk_rows)
             st.dataframe(df_hk.style.format({
-                "成本 (港幣)": "{:.2f}",
-                "現值 (港幣)": "{:.2f}",
-                "盈虧 (港幣)": "{:.2f}",
+                "成本": "{:.2f}",
+                "現值": "{:.2f}",
+                "盈虧": "{:.2f}",
                 "%": "{:.1f}%",
                 "週變化 %": "{:.1f}%",
                 "RSI": "{:.0f}"
@@ -544,9 +544,9 @@ else:
         if us_rows:
             df_us = pd.DataFrame(us_rows)
             st.dataframe(df_us.style.format({
-                "成本 (港幣)": "{:.2f}",
-                "現值 (港幣)": "{:.2f}",
-                "盈虧 (港幣)": "{:.2f}",
+                "成本": "{:.2f}",
+                "現值": "{:.2f}",
+                "盈虧": "{:.2f}",
                 "%": "{:.1f}%",
                 "週變化 %": "{:.1f}%",
                 "RSI": "{:.0f}"
@@ -573,20 +573,20 @@ else:
             chart_df = pd.DataFrame(combined_chart_data)
             
             # Pie chart - Allocation (in HKD)
-            fig = px.pie(chart_df, values='Value_HKD', names='股票代號', title='股票組合分配 (港幣)', hole=0.4)
+            fig = px.pie(chart_df, values='Value_HKD', names='股票代號', title='股票組合分配', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
             
             # Industry distribution pie chart
             industry_df = df.groupby('行業')['現值 (港幣)'].sum().reset_index()
             if len(industry_df) > 0:
-                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布 (港幣)', hole=0.4)
+                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布', hole=0.4)
                 st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
-        st.subheader("📊 各股票盈虧 (港幣)")
+        st.subheader("📊 各股票盈虧")
         
         if len(df) > 0:
-            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='各股票盈虧 (港幣)',
+            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='各股票盈虧',
                            color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
