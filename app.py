@@ -716,6 +716,50 @@ if all_tickers:
                 fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
                 fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
                 st.plotly_chart(fig2, use_container_width=True)
+    # ===== STOCK ANALYSIS =====
+    st.write("---")
+    st.subheader("📈 股票分析 / Stock Analysis")
+    
+    # Fetch metrics for each holding
+    analysis_rows = []
+    for ticker, d in display_holdings.items():
+        if isinstance(d, dict) and d.get('qty', 0) > 0:
+            try:
+                metrics = get_stock_metrics(ticker)
+                if metrics:
+                    analysis_rows.append({
+                        '股票代號': ticker,
+                        '公司': get_name(ticker),
+                        'P/E': metrics.get('pe'),
+                        '預測P/E': metrics.get('forward_pe'),
+                        '市帳率': metrics.get('pb_ratio'),
+                        '52W低': metrics.get('52w_low'),
+                        '52W高': metrics.get('52w_high'),
+                        '波幅%': metrics.get('volatility'),
+                        'Beta': metrics.get('beta'),
+                        '股息%': metrics.get('dividend_yield'),
+                        '帳面值': metrics.get('book_value'),
+                    })
+            except:
+                pass
+    
+    if analysis_rows:
+        df_analysis = pd.DataFrame(analysis_rows)
+        st.dataframe(df_analysis.style.format({
+            'P/E': '{:.2f}',
+            '預測P/E': '{:.2f}',
+            '市帳率': '{:.2f}',
+            '52W低': '{:.2f}',
+            '52W高': '{:.2f}',
+            '波幅%': '{:.1f}%',
+            'Beta': '{:.2f}',
+            '股息%': '{:.2f}%',
+            '帳面值': '{:.2f}',
+        }), use_container_width=True)
+    else:
+        st.info("無法獲取股票分析數據 / Cannot fetch analysis data")
+    
+    # ===== MONTHLY VALUE =====
     st.header("📊 每月價值明細 / Monthly Value")
     months = get_last_n_months(6)
     
