@@ -147,16 +147,11 @@ if not st.session_state.get('logged_in', False):
                     if r.data and len(r.data) > 0:
                         st.session_state.us_stocks = json.loads(r.data[0].get('us_stocks','{}'))
                         st.session_state.hk_stocks = json.loads(r.data[0].get('hk_stocks','{}'))
-                    else:
-                        # Initialize empty portfolios for new users
-                        st.session_state.us_stocks = {}
-                        st.session_state.hk_stocks = {}
                     st.session_state.username = user
                     st.session_state.logged_in = True
-                    st.success(f"Logged in as {user}!")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Login error: {e}")
+                except:
+                    st.error("Error")
 
 else:
     st.write(f"**👤 {st.session_state.username}**")
@@ -421,20 +416,11 @@ else:
     # Portfolio display
     st.header("💼 投資組合")
     
-    # Check login first
-    if not st.session_state.get('logged_in'):
-        st.warning("Please login first!")
-        st.stop()
-    
     # Separate US and HK holdings
     us_rows, us_total_val, us_total_cost = [], 0, 0
     hk_rows, hk_total_val, hk_total_cost = [], 0, 0
     
-    # Use session state for holdings
-    display_holdings = holdings.copy() if holdings else {}
-    # Also try from session state
-    if not display_holdings:
-        display_holdings = {**st.session_state.get('us_stocks', {}), **st.session_state.get('hk_stocks', {})}
+    display_holdings = holdings.copy() if holdings else {**st.session_state.us_stocks, **st.session_state.hk_stocks}
     
     for ticker, d in display_holdings.items():
         try:
