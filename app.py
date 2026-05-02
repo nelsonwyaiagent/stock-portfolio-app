@@ -109,6 +109,40 @@ def get_stock_data_cached(ticker, period="1y"):
     except Exception as e:
         return None
 
+@st.cache_data(ttl=3600)
+def get_stock_metrics(ticker):
+    """Fetch comprehensive stock metrics from Yahoo Finance"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        
+        # Get metrics with fallbacks
+        metrics = {
+            'pe': info.get('trailingPE'),
+            'forward_pe': info.get('forwardPE'),
+            'pb_ratio': info.get('priceToBookRaw'),
+            'beta': info.get('beta'),
+            'dividend_yield': info.get('dividendYieldRaw'),
+            'dividend_rate': info.get('dividendRateRaw'),
+            'book_value': info.get('bookValue'),
+            '52w_low': info.get('fiftyTwoWeekLow'),
+            '52w_high': info.get('fiftyTwoWeekHigh'),
+            'market_cap': info.get('marketCap'),
+            'eps': info.get('trailingEPS'),
+            'profit_margin': info.get('profitMargins'),
+            'roe': info.get('returnOnEquity'),
+        }
+        
+        # Calculate volatility
+        if metrics['52w_low'] and metrics['52w_high'] and metrics['52w_low'] > 0:
+            metrics['volatility'] = ((metrics['52w_high'] - metrics['52w_low']) / metrics['52w_low']) * 100
+        else:
+            metrics['volatility'] = None
+            
+        return metrics
+    except Exception as e:
+        return None
+
 # Improved RSI calculation
 def calculate_rsi(prices, length=14):
     """Calculate RSI manually"""
