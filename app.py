@@ -122,11 +122,11 @@ def get_stock_metrics(ticker):
             'forward_pe': info.get('forwardPE'),
             'pb_ratio': info.get('priceToBookRaw'),
             'beta': info.get('beta'),
-            'dividend_yield': info.get('dividendYieldRaw'),
-            'dividend_rate': info.get('dividendRateRaw'),
+            'dividend_yield': info.get('dividendYield'),  # Simple key that works
+            'dividend_rate': info.get('dividendRate'),    # Annual rate
             'dividend_five_year': info.get('dividendFiveYearAverage'),
             'yield': info.get('yield'),
-            'book_value': info.get('bookValue'),
+            'book_value': info.get('bookValue', 0),
             '52w_low': info.get('fiftyTwoWeekLow'),
             '52w_high': info.get('fiftyTwoWeekHigh'),
             'market_cap': info.get('marketCap'),
