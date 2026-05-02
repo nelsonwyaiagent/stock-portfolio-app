@@ -508,58 +508,51 @@ else:
 
     # Display summary
     if us_rows or hk_rows:
-        # Calculate Grand Totals in USD
-        us_total_val_usd = us_total_val / EXCHANGE_RATE  # Convert US HKD to USD
-        us_total_cost_usd = us_total_cost / EXCHANGE_RATE
-        hk_total_val_usd = hk_total_val  # HK is already in HKD, treat as USD for reporting if pegged
-        hk_total_cost_usd = hk_total_cost
-        
-        grand_total_val_usd = us_total_val_usd + hk_total_val_usd
-        grand_total_cost_usd = us_total_cost_usd + hk_total_cost_usd
-        grand_total_pnl_usd = grand_total_val_usd - grand_total_cost_usd
-        grand_total_pnl_percent = (grand_total_pnl_usd / grand_total_cost_usd * 100) if grand_total_cost_usd > 0 else 0
+        # Combined totals in HKD
+        combined_val = us_total_val + hk_total_val
+        combined_cost = us_total_cost + hk_total_cost
+        grand_total_pnl = combined_val - combined_cost
+        grand_total_pnl_percent = (grand_total_pnl / combined_cost * 100) if combined_cost > 0 else 0
         
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Grand Total Value (USD)", f"${grand_total_val_usd:,.0f}")
-        c2.metric("Grand Total Cost (USD)", f"${grand_total_cost_usd:,.0f}")
-        c3.metric("Grand Total P&L (USD)", f"${grand_total_pnl_usd:,.0f}", f"{grand_total_pnl_percent:.1f}%")
-        c4.metric("Total Holdings", len(us_rows) + len(hk_rows))
+        c1.metric("總值 (港幣)", f"港幣 {combined_val:,.0f}")
+        c2.metric("總成本 (港幣)", f"港幣 {combined_cost:,.0f}")
+        c3.metric("總盈虧 (港幣)", f"港幣 {grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
+        c4.metric("總持股", len(us_rows) + len(hk_rows))
         
-        # Display separate tables for US and HK stocks
+        # Display tables - HK first, then US (stacked)
         st.markdown("---")
         st.subheader("📊 Holdings Detail")
         
-        col_us, col_hk = st.columns(2)
+        # HK Stocks first
+        st.markdown("### 🇭🇰 港股")
+        if hk_rows:
+            df_hk = pd.DataFrame(hk_rows)
+            st.dataframe(df_hk.style.format({
+                "成本 (港幣)": "{:.2f}",
+                "現值 (港幣)": "{:.2f}",
+                "盈虧 (港幣)": "{:.2f}",
+                "%": "{:.1f}%",
+                "週變化 %": "{:.1f}%",
+                "RSI": "{:.0f}"
+            }), use_container_width=True)
+        else:
+            st.info("無港股數據")
         
-        with col_us:
-            st.markdown("### 🇺🇸 US Stocks")
-            if us_rows:
-                df_us = pd.DataFrame(us_rows)
-                st.dataframe(df_us.style.format({
-                    "成本 (港幣)": "${:.2f}",
-                    "現值 (港幣)": "${:.2f}",
-                    "盈虧 (港幣)": "${:.2f}",
-                    "%": "{:.1f}%",
-                    "週變化 %": "{:.1f}%",
-                    "RSI": "{:.0f}"
-                }), use_container_width=True)
-            else:
-                st.info("No US stocks data available.")
-        
-        with col_hk:
-            st.markdown("### 🇭🇰 HK Stocks")
-            if hk_rows:
-                df_hk = pd.DataFrame(hk_rows)
-                st.dataframe(df_hk.style.format({
-                    "成本 (港幣)": "HK${:.2f}",
-                    "現值 (港幣)": "HK${:.2f}",
-                    "盈虧 (港幣)": "HK${:.2f}",
-                    "%": "{:.1f}%",
-                    "週變化 %": "{:.1f}%",
-                    "RSI": "{:.0f}"
-                }), use_container_width=True)
-            else:
-                st.info("No HK stocks data available.")
+        # Then US Stocks
+        st.markdown("### 🇺🇸 美股")
+        if us_rows:
+            df_us = pd.DataFrame(us_rows)
+            st.dataframe(df_us.style.format({
+                "成本 (港幣)": "{:.2f}",
+                "現值 (港幣)": "{:.2f}",
+                "盈虧 (港幣)": "{:.2f}",
+                "%": "{:.1f}%",
+                "週變化 %": "{:.1f}%",
+                "RSI": "{:.0f}"
+            }), use_container_width=True)
+        else:
+            st.info("無美股數據")
         
         # Combine rows for charts
         rows = us_rows + hk_rows
@@ -568,41 +561,33 @@ else:
             df = pd.DataFrame(rows)
         
         if len(df) > 0:
-            # Combined chart data (convert HK to USD)
+            # Combined chart data (all in HKD)
             combined_chart_data = []
             for item in rows:
-                if item['貨幣'] == 'USD':
-                    combined_chart_data.append({
-                        "股票代號": item['股票代號'],
-                        "Value_USD": item['現值 (港幣)'] / EXCHANGE_RATE,
-                        "PnL_USD": item['盈虧 (港幣)'] / EXCHANGE_RATE
-                    })
-                else:
-                    combined_chart_data.append({
-                        "股票代號": item['股票代號'],
-                        "Value_USD": item['現值 (港幣)'] / EXCHANGE_RATE,
-                        "PnL_USD": item['盈虧 (港幣)'] / EXCHANGE_RATE
-                    })
+                combined_chart_data.append({
+                    "股票代號": item['股票代號'],
+                    "Value_HKD": item['現值 (港幣)'],
+                    "PnL_HKD": item['盈虧 (港幣)']
+                })
             
             chart_df = pd.DataFrame(combined_chart_data)
             
-            # Pie chart - Allocation (in USD)
-            fig = px.pie(chart_df, values='Value_USD', names='股票代號', title='Portfolio Allocation (USD)', hole=0.4)
+            # Pie chart - Allocation (in HKD)
+            fig = px.pie(chart_df, values='Value_HKD', names='股票代號', title='股票組合分配 (港幣)', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
             
             # Industry distribution pie chart
             industry_df = df.groupby('行業')['現值 (港幣)'].sum().reset_index()
-            industry_df['Value_USD'] = industry_df['現值 (港幣)'] / EXCHANGE_RATE
             if len(industry_df) > 0:
-                fig2 = px.pie(industry_df, values='Value_USD', names='行業', title='Industry Allocation (USD)', hole=0.4)
+                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布 (港幣)', hole=0.4)
                 st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
-        st.subheader("📊 P&L by Stock (USD)")
+        st.subheader("📊 各股票盈虧 (港幣)")
         
         if len(df) > 0:
-            fig_bar = px.bar(chart_df, x='股票代號', y='PnL_USD', title='Profit/Loss by Stock (USD)',
-                           color='PnL_USD', color_continuous_scale='RdYlGn')
+            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='各股票盈虧 (港幣)',
+                           color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_bar.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
