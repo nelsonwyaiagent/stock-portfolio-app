@@ -729,7 +729,17 @@ if all_tickers:
             try:
                 metrics = get_stock_metrics(ticker)
                 if metrics:
-                    analysis_rows.append({
+                    analysis_# Get dividend
+forward_div = 0
+try:
+    m = get_stock_metrics(ticker)
+    if m:
+        forward_div = m.get('dividend_rate', 0) or 0
+except:
+    pass
+
+expected_div = qty * forward_div
+rows.append({
                         '股票代號': ticker,
                         '公司': get_name(ticker),
                         'P/E': metrics.get('pe'),
