@@ -745,17 +745,7 @@ if all_tickers:
     
     if analysis_rows:
         df_analysis = pd.DataFrame(analysis_rows)
-        st.dataframe(df_analysis.style.format({
-            'P/E': '{:.2f}',
-            '預測P/E': '{:.2f}',
-            '市帳率': '{:.2f}',
-            '52W低': '{:.2f}',
-            '52W高': '{:.2f}',
-            '波幅%': '{:.1f}%',
-            'Beta': '{:.2f}',
-            '股息%': '{:.2f}%',
-            '帳面值': '{:.2f}',
-        }), use_container_width=True)
+        st.dataframe(df_analysis, use_container_width=True)
     else:
         st.info("無法獲取股票分析數據 / Cannot fetch analysis data")
     
