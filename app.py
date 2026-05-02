@@ -616,9 +616,17 @@ else:
     # Monthly historical
 
 # ===== TECHNICAL ANALYSIS =====
-st.header("📈 Technical Analysis")
-
-all_tickers = [h["股票代號"] for h in us_rows] + [h["股票代號"] for h in hk_rows]
+# Check if holdings exist - default to empty list if not defined
+try:
+    us_tickers = us_rows if 'us_rows' in globals() else []
+except:
+    us_tickers = []
+try:
+    hk_tickers = hk_rows if 'hk_rows' in globals() else []
+except:
+    hk_tickers = []
+    
+all_tickers = [h["股票代號"] for h in us_tickers] + [h["股票代號"] for h in hk_tickers]
 
 if all_tickers:
     selected_stock = st.selectbox("Select Stock to Analyze", all_tickers)
