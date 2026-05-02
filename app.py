@@ -595,6 +595,18 @@ else:
             fig_bar.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
             fig_bar.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
             st.plotly_chart(fig_bar, use_container_width=True)
+        
+        # P/L in percentage chart
+        if len(df) > 0:
+            fig_pct = px.bar(df, x='股票代號', y='%', title='各股票盈虧 (%)',
+                           color='%', color_continuous_scale='RdYlGn')
+            fig_pct.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
+            fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
+            fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
+            fig_pct.add_hline(y=-20, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
+            fig_pct.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
+            fig_pct.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
+            st.plotly_chart(fig_pct, use_container_width=True)
     else:
         st.info("添加股票或交易記錄來查看組合!")
 
