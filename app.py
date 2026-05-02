@@ -481,9 +481,9 @@ else:
                         "行業": get_industry(ticker),
                         "貨幣": currency,
                         "數量": qty,
-                        "成本 (港幣)": cost_hkd,
-                        "現值 (港幣)": val_hkd,
-                        "盈虧 (港幣)": pnl,
+                        "成本": cost_hkd,
+                        "現值": val_hkd,
+                        "盈虧": pnl,
                         "%": pct,
                         "週變化 %": weekly_change,
                         "RSI": rsi,
@@ -566,8 +566,8 @@ else:
             for item in rows:
                 combined_chart_data.append({
                     "股票代號": item['股票代號'],
-                    "Value_HKD": item['現值 (港幣)'],
-                    "PnL_HKD": item['盈虧 (港幣)']
+                    "Value_HKD": item['現值'],
+                    "PnL_HKD": item['盈虧']
                 })
             
             chart_df = pd.DataFrame(combined_chart_data)
@@ -577,17 +577,17 @@ else:
             st.plotly_chart(fig, use_container_width=True)
             
             # Industry distribution pie chart
-            industry_df = df.groupby('行業')['現值 (港幣)'].sum().reset_index()
+            industry_df = df.groupby('行業')['現值'].sum().reset_index()
             if len(industry_df) > 0:
-                fig2 = px.pie(industry_df, values='現值 (港幣)', names='行業', title='行業分布', hole=0.4)
+                fig2 = px.pie(industry_df, values='現值', names='行業', title='行業分布', hole=0.4)
                 st.plotly_chart(fig2, use_container_width=True)
         
         st.write("---")
         st.subheader("📊 各股票盈虧")
         
         if len(df) > 0:
-            fig_bar = px.bar(df, x='股票代號', y='盈虧 (港幣)', title='各股票盈虧',
-                           color='盈虧 (港幣)', color_continuous_scale='RdYlGn')
+            fig_bar = px.bar(df, x='股票代號', y='盈虧', title='各股票盈虧',
+                           color='盈虧', color_continuous_scale='RdYlGn')
             fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_bar.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
@@ -658,7 +658,7 @@ if all_tickers:
                 current_val = d['qty'] * current_price
                 cost = d.get('avg_cost', d.get('cost', 0))
                 
-                row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值 (港幣)": round(current_val)}
+                row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值": round(current_val)}
                 
                 for month_end, label in months:
                     try:
@@ -686,7 +686,7 @@ if all_tickers:
         fmt = {}
         for col in hist_df.columns:
             if "value" in col.lower():
-                fmt[col] = "港幣 {:,.0f}"
+                fmt[col] = "{:,.0f}"
             elif "%" in col:
                 fmt[col] = "{:.1f}%"
         st.dataframe(hist_df.style.format(fmt), use_container_width=True)
@@ -705,6 +705,6 @@ if all_tickers:
                         pass
             total_by_month[label] = total
         
-        chart_df = pd.DataFrame(list(total_by_month.items()), columns=["月份", "總值 (港幣)"])
-        fig_line = px.line(chart_df, x='月份', y='總值 (港幣)', title='組合價值趨勢', markers=True)
+        chart_df = pd.DataFrame(list(total_by_month.items()), columns=["月份", "總值"])
+        fig_line = px.line(chart_df, x='月份', y='總值', title='組合價值趨勢', markers=True)
         st.plotly_chart(fig_line, use_container_width=True)
