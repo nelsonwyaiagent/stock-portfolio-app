@@ -124,6 +124,8 @@ def get_stock_metrics(ticker):
             'beta': info.get('beta'),
             'dividend_yield': info.get('dividendYieldRaw'),
             'dividend_rate': info.get('dividendRateRaw'),
+            'dividend_rate_fwd': info.get('dividendRateForward'),
+            'yield': info.get('yield'),  # Total return yield
             'book_value': info.get('bookValue'),
             '52w_low': info.get('fiftyTwoWeekLow'),
             '52w_high': info.get('fiftyTwoWeekHigh'),
@@ -738,6 +740,8 @@ if all_tickers:
                         '波幅%': metrics.get('volatility'),
                         'Beta': metrics.get('beta'),
                         '股息%': metrics.get('dividend_yield'),
+                        '遠期股息': metrics.get('dividend_rate_fwd'),
+                        '收益率': metrics.get('yield'),
                         '帳面值': metrics.get('book_value'),
                     })
             except:
