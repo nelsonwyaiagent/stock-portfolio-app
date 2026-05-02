@@ -86,4 +86,4 @@ MIT License
 
 ---
 
-**產品規格**: 請參閱 `../product-specification-v1.md`
+**產品規格**: 請參閱 `../product-specification-v1.md`Sat May  2 09:03:11 AM UTC 2026
