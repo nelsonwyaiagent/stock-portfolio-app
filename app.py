@@ -535,6 +535,19 @@ else:
                     else:
                         signal = "🟡 持有"
                     
+                    # Calculate expected dividend
+                    expected_div = 0
+                    div_yield = None
+                    try:
+                        m = get_stock_metrics(ticker)
+                        if m:
+                            fd = m.get("dividend_rate", 0)
+                            if fd:
+                                expected_div = qty * fd
+                            div_yield = m.get("dividend_yield")
+                    except:
+                        pass
+                    
                     row_data = {
                         "股票代號": ticker,
                         "公司名稱": company,
@@ -545,6 +558,8 @@ else:
                         "現值": val_hkd,
                         "盈虧": pnl,
                         "%": pct,
+                        "股息率": div_yield,
+                        "預期股息": expected_div,
                         "週變化 %": weekly_change,
                         "RSI": rsi,
                         "信號": signal
@@ -574,11 +589,15 @@ else:
         grand_total_pnl = combined_val - combined_cost
         grand_total_pnl_percent = (grand_total_pnl / combined_cost * 100) if combined_cost > 0 else 0
         
-        c1, c2, c3, c4 = st.columns(4)
+        # Calculate total dividend
+        dividend_total = sum(r.get("預期股息", 0) for r in hk_rows + us_rows if r.get("預期股息"))
+        
+        c1, c2, c3, c4, c5 = st.columns(5)
         c1.metric("總值 / Total Value", f"{combined_val:,.0f}")
         c2.metric("總成本 / Total Cost", f"{combined_cost:,.0f}")
         c3.metric("總盈虧 / Total P&L", f"{grand_total_pnl:,.0f}", f"{grand_total_pnl_percent:.1f}%")
-        c4.metric("總持股 / Holdings", len(us_rows) + len(hk_rows))
+        c4.metric("總股息 / Total Div", f"{dividend_total:,.0f}")
+        c5.metric("總持股 / Holdings", len(us_rows) + len(hk_rows))
         
         # Display tables - HK first, then US (stacked)
         st.markdown("---")
@@ -594,7 +613,9 @@ else:
                 "盈虧": "{:.2f}",
                 "%": "{:.1f}%",
                 "週變化 %": "{:.1f}%",
-                "RSI": "{:.0f}"
+                "RSI": "{:.0f}",
+                "股息率": "{:.2f}%",
+                "預期股息": "{:.2f}"
             }), use_container_width=True)
         else:
             st.info("無港股數據")
@@ -609,7 +630,9 @@ else:
                 "盈虧": "{:.2f}",
                 "%": "{:.1f}%",
                 "週變化 %": "{:.1f}%",
-                "RSI": "{:.0f}"
+                "RSI": "{:.0f}",
+                "股息率": "{:.2f}%",
+                "預期股息": "{:.2f}"
             }), use_container_width=True)
         else:
             st.info("無美股數據")
@@ -729,17 +752,7 @@ if all_tickers:
             try:
                 metrics = get_stock_metrics(ticker)
                 if metrics:
-                    analysis_# Get dividend
-forward_div = 0
-try:
-    m = get_stock_metrics(ticker)
-    if m:
-        forward_div = m.get('dividend_rate', 0) or 0
-except:
-    pass
-
-expected_div = qty * forward_div
-rows.append({
+                    analysis_rows.append({
                         '股票代號': ticker,
                         '公司': get_name(ticker),
                         'P/E': metrics.get('pe'),
