@@ -429,6 +429,7 @@ else:
             price_symbol = "$" if curr == 'USD' else "港幣"
             display_tx.append({
                 '股票代號': row['股票代號'],
+                '公司': row['公司'],
                 '貨幣': curr,
                 '類型': row['類型'],
                 '數量': row['數量'],
@@ -436,6 +437,7 @@ else:
                 '成交總額': f"{curr} {row['數量'] * row['成交價']:.2f}",
                 '交易日期': row['交易日期'],
                 '現價': f"{price_symbol}{row['現價']:.2f}" if row['現價'] else "-",
+                '現值': f"{price_symbol}{(row['現價'] or 0) * row['數量']:.2f}" if row['現價'] else "-",
                 '現值(HKD)': f"港幣{row['現價']*EXCHANGE_RATE:.2f}" if row['現價'] and curr == 'USD' else "-",
                 '盈虧': f"{row['盈虧比率']:.1f}%" if row['盈虧比率'] else "-",
             })
@@ -745,30 +747,31 @@ if all_tickers:
     st.write("---")
     st.subheader("📈 股票分析 / Stock Analysis")
     
-    # Fetch metrics for each holding
+    # Fetch metrics for each holding - include all symbols even if qty is 0
     analysis_rows = []
-    for ticker, d in display_holdings.items():
-        if isinstance(d, dict) and d.get('qty', 0) > 0:
-            try:
-                metrics = get_stock_metrics(ticker)
-                if metrics:
-                    analysis_rows.append({
-                        '股票代號': ticker,
-                        '公司': get_name(ticker),
-                        'P/E': metrics.get('pe'),
-                        '預測P/E': metrics.get('forward_pe'),
-                        '市帳率': metrics.get('pb_ratio'),
-                        '52W低': metrics.get('52w_low'),
-                        '52W高': metrics.get('52w_high'),
-                        '波幅%': metrics.get('volatility'),
-                        'Beta': metrics.get('beta'),
-                        '股息%': metrics.get('dividend_yield'),
-                        '遠期股息': metrics.get('dividend_rate'),
-                        '收益率': metrics.get('dividend_five_year'),
-                        '帳面值': metrics.get('book_value'),
-                    })
-            except:
-                pass
+    all_symbols = set(list(display_holdings.keys()) + list(holdings.keys()))
+    
+    for ticker in all_symbols:
+        try:
+            metrics = get_stock_metrics(ticker)
+            if metrics:
+                analysis_rows.append({
+                    '股票代號': ticker,
+                    '公司': get_name(ticker),
+                    'P/E': metrics.get('pe'),
+                    '預測P/E': metrics.get('forward_pe'),
+                    '市帳率': metrics.get('pb_ratio'),
+                    '52W低': metrics.get('52w_low'),
+                    '52W高': metrics.get('52w_high'),
+                    '波幅%': metrics.get('volatility'),
+                    'Beta': metrics.get('beta'),
+                    '股息%': metrics.get('dividend_yield'),
+                    '遠期股息': metrics.get('dividend_rate'),
+                    '收益率': metrics.get('dividend_five_year'),
+                    '帳面值': metrics.get('book_value'),
+                })
+        except:
+            pass
     
     if analysis_rows:
         df_analysis = pd.DataFrame(analysis_rows)
