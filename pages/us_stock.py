@@ -119,10 +119,10 @@ with st.sidebar:
     transaction_type = st.selectbox("類型", ["BUY", "SELL"])
     symbol = st.text_input("股票代號 (e.g., AAPL)", "").upper()
     
+    current_price = 100.0
     if symbol:
         try:
             stock = yf.Ticker(symbol)
-            info = stock.info
             current_price = stock.history(period="1d")['Close'].iloc[-1]
             st.write(f"現價: ${current_price:.2f}")
             st.write(f"公司: {get_us_name(symbol)}")
@@ -130,11 +130,11 @@ with st.sidebar:
             st.warning("無法獲取價格")
     
     quantity = st.number_input("數量", min_value=1, value=10)
-    price_usd = st.number_input("成交價 (USD)", min_value=0.01, value=float(current_price) if symbol else 100.0)
+    price_usd = st.number_input("成交價 (USD)", min_value=0.01, value=float(current_price))
     trans_date = st.date_input("交易日期", datetime.now())
     
     if st.button("確認添加"):
-        if symbol and quantity and price_usd:
+        if symbol and quantity and price_usd > 0:
             try:
                 supabase.table('us_transactions').insert({
                     'username': st.session_state.username,
