@@ -612,16 +612,7 @@ else:
         st.markdown("### 🇭🇰 港股 / HK Stocks")
         if hk_rows:
             df_hk = pd.DataFrame(hk_rows)
-            st.dataframe(df_hk.style.format({
-                "成本": "{:.2f}",
-                "現值": "{:.2f}",
-                "盈虧": "{:.2f}",
-                "%": "{:.1f}%",
-                "週變化 %": "{:.1f}%",
-                "RSI": "{:.0f}",
-                "股息率": "{:.2f}%",
-                "預期股息": "{:.2f}"
-            }), use_container_width=True)
+            st.dataframe(df_hk, use_container_width=True)
         else:
             st.info("無港股數據")
         
@@ -629,16 +620,7 @@ else:
         st.markdown("### 🇺🇸 美股 / US Stocks")
         if us_rows:
             df_us = pd.DataFrame(us_rows)
-            st.dataframe(df_us.style.format({
-                "成本": "{:.2f}",
-                "現值": "{:.2f}",
-                "盈虧": "{:.2f}",
-                "%": "{:.1f}%",
-                "週變化 %": "{:.1f}%",
-                "RSI": "{:.0f}",
-                "股息率": "{:.2f}%",
-                "預期股息": "{:.2f}"
-            }), use_container_width=True)
+            st.dataframe(df_us, use_container_width=True)
         else:
             st.info("無美股數據")
         
