@@ -785,62 +785,86 @@ if all_tickers:
     st.header("📊 每月價值明細 / Monthly Value")
     months = get_last_n_months(6)
     
-    hist_rows = []
-    for ticker, d in display_holdings.items():
-        if isinstance(d, dict) and d.get('qty', 0) > 0:
+    # Function to calculate qty at month end from transaction history
+    def get_qty_at_month(month_end_date):
+        """Calculate stock qty at month end from transactions"""
+        month_qty = {}
+        
+        if supabase:
             try:
-                company = get_name(ticker)
-                current_price = yf.Ticker(ticker).history(period="1d")['Close'].iloc[-1]
-                current_val = d['qty'] * current_price
-                cost = d.get('avg_cost', d.get('cost', 0))
+                # Get all HK transactions up to month_end
+                hk_tx = supabase.table('transactions').select('symbol,quantity,transaction_type').lte('transaction_date', month_end_date).execute()
+                for row in hk_tx.data or []:
+                    sym = row['symbol']
+                    qty_change = row['quantity'] if row['transaction_type'] == 'BUY' else -row['quantity']
+                    month_qty[sym] = month_qty.get(sym, 0) + qty_change
                 
-                row = {"股票代號": ticker, "公司名稱": company, "數量": d['qty'], "現值": round(current_val)}
-                
-                for month_end, label in months:
-                    try:
-                        hist = yf.Ticker(ticker).history(start="2025-07-01", end=month_end)
-                        if not hist.empty:
-                            month_price = hist['Close'].iloc[-1]
-                            month_val = d['qty'] * month_price
-                            cost_val = d['qty'] * cost
-                            pct_inc = ((month_val - cost_val) / cost_val * 100) if cost_val else 0
-                            row[f"{label} value"] = round(month_val)
-                            row[f"{label} %"] = pct_inc
-                        else:
-                            row[f"{label} value"] = 0
-                            row[f"{label} %"] = 0
-                    except:
-                        row[f"{label} value"] = 0
-                        row[f"{label} %"] = 0
-                
-                hist_rows.append(row)
+                # Get all US transactions up to month_end
+                try:
+                    us_tx = supabase.table('us_transactions').select('symbol,quantity,transaction_type').lte('transaction_date', month_end_date).execute()
+                    for row in us_tx.data or []:
+                        sym = row['symbol']
+                        qty_change = row['quantity'] if row['transaction_type'] == 'BUY' else -row['quantity']
+                        month_qty[sym] = month_qty.get(sym, 0) + qty_change
+                except:
+                    pass
             except:
                 pass
+        
+        # Return only positive qty
+        return {k: v for k, v in month_qty.items() if v > 0}
+    
+    hist_rows = []
+    total_by_month = {}
+    
+    # Get all months qty first
+    all_month_qty = {}
+    for month_end, label in months:
+        all_month_qty[label] = get_qty_at_month(month_end)
+    
+    # Build rows for each stock that appeared in any month
+    allstocks = set()
+    for mq in all_month_qty.values():
+        allstocks.update(mq.keys())
+    
+    for ticker in allstocks:
+        try:
+            company = get_name(ticker)
+            row = {"股票代號": ticker, "公司名稱": company}
+            
+            for month_end, label in months:
+                mqty = all_month_qty.get(label, {}).get(ticker, 0)
+                if mqty > 0:
+                    try:
+                        hist = yf.Ticker(ticker).history(start="2025-01-01", end=month_end)
+                        if not hist.empty:
+                            month_price = hist['Close'].iloc[-1]
+                            month_val = mqty * month_price
+                            row[f"{label} 數量"] = mqty
+                            row[f"{label} 現值"] = round(month_val)
+                        else:
+                            row[f"{label} 數量"] = mqty
+                            row[f"{label} 現值"] = 0
+                    except:
+                        row[f"{label} 數量"] = mqty
+                        row[f"{label} 現值"] = 0
+                else:
+                    row[f"{label} 數量"] = 0
+                    row[f"{label} 現值"] = 0
+            
+            hist_rows.append(row)
+            
+            # Accumulate totals
+            for month_end, label in months:
+                total_by_month[label] = total_by_month.get(label, 0) + row.get(f"{label} 現值", 0)
+                
+        except:
+            pass
     
     if hist_rows:
-        hist_df = pd.DataFrame(hist_rows)
-        fmt = {}
-        for col in hist_df.columns:
-            if "value" in col.lower():
-                fmt[col] = "{:,.0f}"
-            elif "%" in col:
-                fmt[col] = "{:.1f}%"
-        st.dataframe(hist_df.style.format(fmt), use_container_width=True)
+        st.dataframe(pd.DataFrame(hist_rows), use_container_width=True)
         
-        total_by_month = {}
-        for month_end, label in months:
-            total = 0
-            for ticker, d in display_holdings.items():
-                if isinstance(d, dict) and d.get('qty', 0) > 0:
-                    try:
-                        stock = yf.Ticker(ticker)
-                        hist = stock.history(start="2025-07-01", end=month_end)
-                        if not hist.empty:
-                            total += d['qty'] * hist['Close'].iloc[-1]
-                    except:
-                        pass
-            total_by_month[label] = total
-        
+        # Portfolio Trend Chart
         chart_df = pd.DataFrame(list(total_by_month.items()), columns=["月份", "總值"])
         fig_line = px.line(chart_df, x='月份', y='總值', title='組合價值趨勢 / Portfolio Trend', markers=True)
         st.plotly_chart(fig_line, use_container_width=True)
