@@ -118,6 +118,7 @@ def get_stock_metrics(ticker):
         
         # Get metrics with fallbacks
         metrics = {
+            'price': info.get('currentPrice'),
             'pe': info.get('trailingPE'),
             'forward_pe': info.get('forwardPE'),
             'pb_ratio': info.get('priceToBookRaw'),
@@ -758,6 +759,7 @@ if all_tickers:
                 analysis_rows.append({
                     '股票代號': ticker,
                     '公司': get_name(ticker),
+                    '股價': metrics.get('price'),
                     'P/E': metrics.get('pe'),
                     '預測P/E': metrics.get('forward_pe'),
                     '市帳率': metrics.get('pb_ratio'),
