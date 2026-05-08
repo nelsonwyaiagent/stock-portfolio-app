@@ -58,19 +58,21 @@ def get_last_n_months(n=6):
     for i in range(n-1, -1, -1):
         # Calculate month end date
         if i == 0:
-            # Current month - use today
+            # Current month - use TODAY (not end of month) since future has no data
             d = datetime.now()
+            month_end = d.strftime("%Y-%m-%d")
         else:
             # Go back i months
             from datetime import datetime
             d = datetime.now() - timedelta(days=i*30)
         
-        # Get last day of month
-        if d.month == 12:
-            next_month = datetime(d.year+1, 1, 1)
-        else:
-            next_month = datetime(d.year, d.month+1, 1)
-        month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+            # Get last day of month
+            if d.month == 12:
+                next_month = datetime(d.year+1, 1, 1)
+            else:
+                next_month = datetime(d.year, d.month+1, 1)
+            month_end = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
+        
         month_label = d.strftime("%m月")
         
         months.append((month_end, month_label))
@@ -836,15 +838,21 @@ if all_tickers:
                 mqty = all_month_qty.get(label, {}).get(ticker, 0)
                 if mqty > 0:
                     try:
-                        hist = yf.Ticker(ticker).history(start="2025-01-01", end=month_end)
-                        if not hist.empty:
-                            month_price = hist['Close'].iloc[-1]
-                            month_val = mqty * month_price
-                            row[f"{label} 數量"] = mqty
-                            row[f"{label} 現值"] = round(month_val)
+                        # For current month, get latest price; for past months, get month-end price
+                        if label == months[-1][1]:  # Current month
+                            stock = yf.Ticker(ticker)
+                            current_price = stock.history(period="1d")['Close'].iloc[-1]
+                            month_val = mqty * current_price
                         else:
-                            row[f"{label} 數量"] = mqty
-                            row[f"{label} 現值"] = 0
+                            hist = yf.Ticker(ticker).history(start="2025-01-01", end=month_end)
+                            if not hist.empty:
+                                month_price = hist['Close'].iloc[-1]
+                                month_val = mqty * month_price
+                            else:
+                                month_val = 0
+                        
+                        row[f"{label} 數量"] = mqty
+                        row[f"{label} 現值"] = round(month_val)
                     except:
                         row[f"{label} 數量"] = mqty
                         row[f"{label} 現值"] = 0
