@@ -787,29 +787,19 @@ if all_tickers:
     st.header("📊 每月價值明細 / Monthly Value")
     months = get_last_n_months(6)
     
-    # Function to calculate qty at month end from transaction history
-    def get_qty_at_month(month_end_date, username):
-        """Calculate stock qty at month end from transactions for specific user"""
+    # Function to calculate qty at month end from HK transaction history only
+    def get_hk_qty_at_month(month_end_date, username):
+        """Calculate HK stock qty at month end from transactions for specific user"""
         month_qty = {}
         
         if supabase:
             try:
-                # Get all HK transactions up to month_end for this user
+                # Get HK transactions only (transactions table)
                 hk_tx = supabase.table('transactions').select('symbol,quantity,transaction_type').eq('username', username).lte('transaction_date', month_end_date).execute()
                 for row in hk_tx.data or []:
                     sym = row['symbol']
                     qty_change = row['quantity'] if row['transaction_type'] == 'BUY' else -row['quantity']
                     month_qty[sym] = month_qty.get(sym, 0) + qty_change
-                
-                # Get all US transactions up to month_end for this user
-                try:
-                    us_tx = supabase.table('us_transactions').select('symbol,quantity,transaction_type').eq('username', username).lte('transaction_date', month_end_date).execute()
-                    for row in us_tx.data or []:
-                        sym = row['symbol']
-                        qty_change = row['quantity'] if row['transaction_type'] == 'BUY' else -row['quantity']
-                        month_qty[sym] = month_qty.get(sym, 0) + qty_change
-                except:
-                    pass
             except:
                 pass
         
@@ -819,10 +809,10 @@ if all_tickers:
     hist_rows = []
     total_by_month = {}
     
-    # Get all months qty first - for current user only
+    # Get all months qty first - for current user only (HK only)
     all_month_qty = {}
     for month_end, label in months:
-        all_month_qty[label] = get_qty_at_month(month_end, st.session_state.username)
+        all_month_qty[label] = get_hk_qty_at_month(month_end, st.session_state.username)
     
     # Build rows for each stock that appeared in any month
     allstocks = set()
