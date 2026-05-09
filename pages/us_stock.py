@@ -173,7 +173,6 @@ if supabase:
                 current_value = current_price * row['quantity'] if current_price else None
                 
                 tx_list.append({
-                    'id': row['id'],
                     '股票代號': sym,
                     '公司': get_us_name(sym),
                     '類型': row['transaction_type'],
@@ -183,7 +182,7 @@ if supabase:
                     '交易日期': row['transaction_date'],
                     '現價': current_price,
                     '現值': current_value,
-                    '盈虧比率': pl_ratio,
+                    'Gain/Loss %': pl_ratio,
                 })
             
             df_tx = pd.DataFrame(tx_list)
@@ -350,6 +349,52 @@ if display_holdings:
         industry_agg = industry_df.groupby('行業')['現值'].sum().reset_index()
         fig_ind = px.pie(industry_agg, values='現值', names='行業', title='行業分布 / Industry Allocation', hole=0.4)
         st.plotly_chart(fig_ind, use_container_width=True)
+
+# Stock Detail / Trend Analysis
+st.write("---")
+st.subheader("📊 股票趨勢分析 / Stock Trend Analysis")
+
+if list(display_holdings.keys()):
+    analysis_stock = st.selectbox("選擇股票 / Select Stock", list(display_holdings.keys()))
+    
+    if analysis_stock:
+        try:
+            stock = yf.Ticker(analysis_stock)
+            df = stock.history(period="1y")['Close']
+            
+            # Calculate RSI
+            delta = df.diff()
+            gain = delta.where(delta > 0, 0).rolling(14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Price chart
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=stock.history(period="1y")['Open'],
+                    high=stock.history(period="1y")['High'],
+                    low=stock.history(period="1y")['Low'],
+                    close=df,
+                    name='Price'
+                ))
+                fig.update_layout(title=f"{analysis_stock} Price", height=300)
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                # RSI Chart
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(x=df.index, y=rsi, name='RSI', line=dict(color='purple', width=2)))
+                fig2.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
+                fig2.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
+                fig2.update_layout(title="RSI (14)", height=300, yaxis_range=[0, 100])
+                st.plotly_chart(fig2, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 # Stock Analysis
 st.write("---")
