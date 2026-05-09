@@ -273,33 +273,48 @@ if display_holdings:
 st.write("---")
 st.subheader("📈 股票分析 / Stock Analysis")
 
-if display_holdings:
+# Get ALL US stock symbols from transactions (not just current holdings)
+all_us_symbols = set()
+if supabase:
+    try:
+        r_us = supabase.table('us_transactions').select('symbol').eq('username', st.session_state.username).execute()
+        for row in r_us.data or []:
+            all_us_symbols.add(row['symbol'])
+    except:
+        pass
+
+if all_us_symbols:
     analysis_rows = []
-    for ticker in display_holdings.keys():
-        m = get_stock_metrics(ticker)
-        if m:
-            vol = 0
-            if m.get('52w_low') and m.get('52w_high') and m['52w_low'] > 0:
-                vol = ((m['52w_high'] - m['52w_low']) / m['52w_low']) * 100
-            
-            analysis_rows.append({
-                '股票代號': ticker,
-                '公司': get_us_name(ticker),
-                '股價': m.get('price'),
-                'P/E': m.get('pe'),
-                '預測P/E': m.get('forward_pe'),
-                '市帳率': m.get('pb_ratio'),
-                '52W低': m.get('52w_low'),
-                '52W高': m.get('52w_high'),
-                '波幅%': vol,
-                'Beta': m.get('beta'),
-                '股息%': m.get('dividend_yield'),
-                '遠期股息': m.get('dividend_rate'),
-                '帳面值': m.get('book_value'),
-            })
+    for ticker in all_us_symbols:
+        try:
+            m = get_stock_metrics(ticker)
+            if m:
+                vol = 0
+                if m.get('52w_low') and m.get('52w_high') and m['52w_low'] > 0:
+                    vol = ((m['52w_high'] - m['52w_low']) / m['52w_low']) * 100
+                
+                analysis_rows.append({
+                    '股票代號': ticker,
+                    '公司': get_us_name(ticker),
+                    '股價': m.get('price'),
+                    'P/E': m.get('pe'),
+                    '預測P/E': m.get('forward_pe'),
+                    '市帳率': m.get('pb_ratio'),
+                    '52W低': m.get('52w_low'),
+                    '52W高': m.get('52w_high'),
+                    '波幅%': vol,
+                    'Beta': m.get('beta'),
+                    '股息%': m.get('dividend_yield'),
+                    '遠期股息': m.get('dividend_rate'),
+                    '帳面值': m.get('book_value'),
+                })
+        except:
+            pass
     
     if analysis_rows:
         st.dataframe(pd.DataFrame(analysis_rows), use_container_width=True)
+else:
+    st.info("無美股數據")
 
 # Monthly Value
 st.write("---")
