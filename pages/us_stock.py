@@ -149,7 +149,51 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"Error: {e}")
 
-# Fetch US transactions
+# Transaction History - US Stocks
+st.header("📋 美股交易記錄")
+
+if supabase:
+    try:
+        r_us = supabase.table('us_transactions').select('*').eq('username', st.session_state.username).execute()
+        
+        if r_us.data and len(r_us.data) > 0:
+            tx_list = []
+            for row in r_us.data:
+                sym = row['symbol']
+                try:
+                    current_price = yf.Ticker(sym).history(period="1d")['Close'].iloc[-1]
+                except:
+                    current_price = None
+                
+                pl_ratio = None
+                price_usd = row['price_usd']
+                if row['transaction_type'] == 'BUY' and current_price:
+                    pl_ratio = ((current_price - price_usd) / price_usd) * 100
+                
+                current_value = current_price * row['quantity'] if current_price else None
+                
+                tx_list.append({
+                    'id': row['id'],
+                    '股票代號': sym,
+                    '公司': get_us_name(sym),
+                    '類型': row['transaction_type'],
+                    '數量': row['quantity'],
+                    '成交價': price_usd,
+                    '成交總額': row['quantity'] * price_usd,
+                    '交易日期': row['transaction_date'],
+                    '現價': current_price,
+                    '現值': current_value,
+                    '盈虧比率': pl_ratio,
+                })
+            
+            df_tx = pd.DataFrame(tx_list)
+            st.dataframe(df_tx, use_container_width=True)
+        else:
+            st.info("暫無美股交易記錄!")
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+# Holdings calculation
 holdings = {}
 us_total_val, us_total_cost = 0, 0
 
@@ -268,6 +312,44 @@ if display_holdings:
                    color_continuous_scale=['red', 'gray', 'green'])
     fig_bar.add_hline(y=0)
     st.plotly_chart(fig_bar, use_container_width=True)
+    
+    # P&L % Chart
+    fig_pct = px.bar(pnl_data, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
+                     color='%', color_continuous_scale=['red', 'gray', 'green'])
+    fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
+    fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
+    fig_pct.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")
+    fig_pct.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
+    st.plotly_chart(fig_pct, use_container_width=True)
+
+# US Stock Industry mapping
+US_INDUSTRY = {
+    "AAPL": "TECH", "MSFT": "TECH", "GOOGL": "TECH", "AMZN": "CONS",
+    "TSLA": "AUTO", "META": "TECH", "NVDA": "TECH", "JPM": "FIN",
+    "V": "FIN", "JNJ": "HLTH", "WMT": "CONS", "PG": "CONS",
+    "MA": "FIN", "UNH": "HLTH", "HD": "CONS", "DIS": "MEDIA",
+    "NFLX": "MEDIA", "AMD": "TECH", "INTC": "TECH", "COST": "CONS",
+    "BA": "INDU", "CAT": "INDU", "MMM": "INDU", "GE": "INDU",
+    "XOM": "ENERGY", "CVX": "ENERGY", "PFE": "HLTH", "ABBV": "HLTH",
+    "KO": "CONS", "PEP": "CONS", "MCD": "CONS", "NKE": "CONS",
+}
+
+def get_us_industry(ticker):
+    return US_INDUSTRY.get(ticker, "OTHER")
+
+# Industry Allocation Chart
+if display_holdings:
+    st.write("---")
+    industry_data = []
+    for ticker, d in display_holdings.items():
+        ind = get_us_industry(ticker)
+        industry_data.append({"行業": ind, "現值": d['current_value']})
+    
+    industry_df = pd.DataFrame(industry_data)
+    if len(industry_df) > 0:
+        industry_agg = industry_df.groupby('行業')['現值'].sum().reset_index()
+        fig_ind = px.pie(industry_agg, values='現值', names='行業', title='行業分布 / Industry Allocation', hole=0.4)
+        st.plotly_chart(fig_ind, use_container_width=True)
 
 # Stock Analysis
 st.write("---")
