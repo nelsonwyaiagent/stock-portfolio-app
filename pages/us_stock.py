@@ -309,12 +309,20 @@ if display_holdings:
     pnl_data = [{"股票代號": k, "盈虧": v['pnl'], "%": v['pnl_pct']} for k, v in display_holdings.items()]
     fig_bar = px.bar(pnl_data, x='股票代號', y='盈虧', title='損益 / P&L', color='盈虧',
                    color_continuous_scale=['red', 'gray', 'green'])
+    fig_bar.update_traces(
+        text=[f"${x:,.0f}" for x in pnl_data['盈虧']],
+        textposition='outside'
+    )
     fig_bar.add_hline(y=0)
     st.plotly_chart(fig_bar, use_container_width=True)
     
-    # P&L % Chart
+    # P&L % Chart with labels
     fig_pct = px.bar(pnl_data, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
                      color='%', color_continuous_scale=['red', 'gray', 'green'])
+    fig_pct.update_traces(
+        text=[f"{x:.1f}%" for x in pnl_data['%']],
+        textposition='outside'
+    )
     fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
     fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
     fig_pct.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")

@@ -606,9 +606,16 @@ else:
         st.subheader("📊 各股票盈虧 / P&L by Stock")
         
         if len(df) > 0:
+            # Add text labels
+            df['label'] = df['盈虧'].apply(lambda x: f"${x:,.0f}")
+            
             fig_bar = px.bar(df, x='股票代號', y='盈虧', title='各股票盈虧 / P&L by Stock',
                            color='盈虧', color_continuous_scale='RdYlGn')
-            fig_bar.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
+            fig_bar.update_traces(
+                text=df['label'],
+                textposition='outside',
+                marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']])
+            )
             fig_bar.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_bar.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
             fig_bar.add_hline(y=-20, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
@@ -618,9 +625,16 @@ else:
         
         # P/L in percentage chart
         if len(df) > 0:
+            # Add text labels
+            df['label_pct'] = df['%'].apply(lambda x: f"{x:.1f}%")
+            
             fig_pct = px.bar(df, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
                            color='%', color_continuous_scale='RdYlGn')
-            fig_pct.update_traces(marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']]))
+            fig_pct.update_traces(
+                text=df['label_pct'],
+                textposition='outside',
+                marker=dict(color=[ 'red' if x < 0 else 'green' for x in df['%']])
+            )
             fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
             fig_pct.add_hline(y=-20, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
