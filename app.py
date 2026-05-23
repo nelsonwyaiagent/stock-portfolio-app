@@ -206,15 +206,23 @@ if not st.session_state.get('logged_in', False):
         if st.form_submit_button("登入"):
             if user and supabase:
                 try:
+                    # Test connection first
+                    r_test = supabase.table('portfolios').select('us_stocks').limit(1).execute()
+                    
+                    # Then get user data
                     r = supabase.table('portfolios').select('us_stocks','hk_stocks').eq('username', user).execute()
                     if r.data and len(r.data) > 0:
                         st.session_state.us_stocks = json.loads(r.data[0].get('us_stocks','{}'))
                         st.session_state.hk_stocks = json.loads(r.data[0].get('hk_stocks','{}'))
+                    else:
+                        # New user - initialize empty
+                        st.session_state.us_stocks = {}
+                        st.session_state.hk_stocks = {}
                     st.session_state.username = user
                     st.session_state.logged_in = True
                     st.rerun()
-                except:
-                    st.error("Error")
+                except Exception as e:
+                    st.error(f"連接錯誤，請重試 / Connection error, please try again")
 
 else:
     st.write(f"**👤 {st.session_state.username}**")
