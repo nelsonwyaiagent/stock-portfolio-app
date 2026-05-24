@@ -148,6 +148,26 @@ def get_stock_metrics(ticker):
     except Exception as e:
         return None
 
+@st.cache_data(ttl=3600)
+def get_90day_price(ticker):
+    """Get 90-day price data"""
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="90d")
+        if len(hist) > 0:
+            current = hist['Close'].iloc[-1]
+            highest = hist['Close'].max()
+            drop_pct = ((highest - current) / highest) * 100 if highest > 0 else 0
+            return {
+                'current': current,
+                'highest': highest,
+                'drop_pct': drop_pct,
+                'signal': '🟢 買入' if drop_pct >= 20 else ('🟡 留意' if drop_pct >= 10 else '🔴 持有')
+            }
+    except:
+        pass
+    return None
+
 # Improved RSI calculation
 def calculate_rsi(prices, length=14):
     """Calculate RSI manually"""
@@ -711,8 +731,10 @@ if all_tickers:
     for ticker in all_symbols:
         try:
             metrics = get_stock_metrics(ticker)
+            price_90d = get_90day_price(ticker)
+            
             if metrics:
-                analysis_rows.append({
+                row_data = {
                     '股票代號': ticker,
                     '公司': get_name(ticker),
                     '股價': metrics.get('price'),
@@ -727,7 +749,16 @@ if all_tickers:
                     '遠期股息': metrics.get('dividend_rate'),
                     '收益率': metrics.get('dividend_five_year'),
                     '帳面值': metrics.get('book_value'),
-                })
+                }
+                
+                # Add 90-day data if available
+                if price_90d:
+                    row_data['90天最高'] = price_90d.get('highest')
+                    row_data['現價'] = price_90d.get('current')
+                    row_data['回調%'] = price_90d.get('drop_pct')
+                    row_data['信號'] = price_90d.get('signal')
+                
+                analysis_rows.append(row_data)
         except:
             pass
     
