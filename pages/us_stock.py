@@ -310,7 +310,7 @@ if display_holdings:
     fig_bar = px.bar(pnl_data, x='股票代號', y='盈虧', title='損益 / P&L', color='盈虧',
                    color_continuous_scale=['red', 'gray', 'green'])
     fig_bar.update_traces(
-        text=[f"${x:,.0f}" for x in pnl_data['盈虧']],
+        text=[f"${x:,.0f}" if pd.notna(x) else "$0" for x in pnl_data['盈虧']],
         textposition='outside'
     )
     fig_bar.add_hline(y=0)
@@ -320,7 +320,7 @@ if display_holdings:
     fig_pct = px.bar(pnl_data, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
                      color='%', color_continuous_scale=['red', 'gray', 'green'])
     fig_pct.update_traces(
-        text=[f"{x:.1f}%" for x in pnl_data['%']],
+        text=[f"{x:.1f}%" if pd.notna(x) else "0%" for x in pnl_data['%']],
         textposition='outside'
     )
     fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
@@ -404,6 +404,28 @@ if list(display_holdings.keys()):
         except Exception as e:
             st.error(f"Error: {e}")
 
+
+@st.cache_data(ttl=3600)
+def get_90day_price_us(ticker):
+    """Get 90-day price data for US stocks"""
+    try:
+        stock = yf.Ticker(ticker)
+        hist = stock.history(period="90d")
+        if len(hist) > 0:
+            current = hist['Close'].iloc[-1]
+            highest = hist['Close'].max()
+            drop_pct = ((highest - current) / highest) * 100 if highest > 0 else 0
+            return {
+                'current': current,
+                'highest': highest,
+                'drop_pct': drop_pct,
+                'signal': '🟢 Buy' if drop_pct >= 20 else ('🟡 Watch' if drop_pct >= 10 else '🔴 Hold')
+            }
+    except:
+        pass
+    return None
+
+
 # Stock Analysis
 st.write("---")
 st.subheader("📈 股票分析 / Stock Analysis")
@@ -423,12 +445,10 @@ if all_us_symbols:
     for ticker in all_us_symbols:
         try:
             m = get_stock_metrics(ticker)
+            p90 = get_90day_price_us(ticker)
+            
             if m:
-                vol = 0
-                if m.get('52w_low') and m.get('52w_high') and m['52w_low'] > 0:
-                    vol = ((m['52w_high'] - m['52w_low']) / m['52w_low']) * 100
-                
-                analysis_rows.append({
+                row = {
                     '股票代號': ticker,
                     '公司': get_us_name(ticker),
                     '股價': m.get('price'),
@@ -442,7 +462,16 @@ if all_us_symbols:
                     '股息%': m.get('dividend_yield'),
                     '遠期股息': m.get('dividend_rate'),
                     '帳面值': m.get('book_value'),
-                })
+                }
+                
+                # Add 90-day data
+                if p90:
+                    row['90天最高'] = p90.get('highest')
+                    row['現價'] = p90.get('current')
+                    row['回調%'] = p90.get('drop_pct')
+                    row['信號'] = p90.get('signal')
+                
+                analysis_rows.append(row)
         except:
             pass
     
