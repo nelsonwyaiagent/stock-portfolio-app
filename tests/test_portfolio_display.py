@@ -7,6 +7,7 @@ from portfolio_display import (
     COMPACT_COLUMNS,
     balance_snapshot,
     build_compact_frame,
+    build_pnl_chart_frame,
     compact_styler,
     concentration_notice,
     contributor_lists,
@@ -284,6 +285,44 @@ class BalanceTests(unittest.TestCase):
         self.assertAlmostEqual(snap["hk_weight"], 75)
         self.assertAlmostEqual(snap["us_weight"], 25)
         self.assertEqual(resolve_security("AAPL")["name"], "蘋果")
+
+
+class PnlChartLabelTests(unittest.TestCase):
+    def test_axis_uses_company_names_and_hover_keeps_ticker(self):
+        frame = build_pnl_chart_frame(observed_rows(), currency="HKD")
+        labels = list(frame["標籤"])
+        self.assertIn("國指備兌ETF", labels)
+        self.assertIn("騰訊控股", labels)
+        self.assertIn("中國平安", labels)
+        self.assertNotIn("3416.HK", labels)
+        self.assertNotIn("2318.HK", labels)
+        self.assertNotIn("0700.HK", labels)
+        hover = " ".join(frame["hover"])
+        self.assertIn("國指備兌ETF (3416.HK)", hover)
+        self.assertIn("中國平安 (2318.HK)", hover)
+        self.assertIn("HKD -114,750", hover)
+
+    def test_long_names_wrap_and_duplicates_stay_distinct(self):
+        long_name = "Example Corporation International Holdings"
+        rows = [
+            {"ticker": "LONG", "name": long_name, "pnl": -10, "pnl_pct": -5},
+            {"ticker": "AAA.HK", "name": "騰訊控股", "pnl": 1, "pnl_pct": 1},
+            {"ticker": "BBB.HK", "name": "騰訊控股", "pnl": 2, "pnl_pct": 2},
+            {"ticker": "BARE", "name": "", "pnl": 0, "pnl_pct": 0},
+        ]
+        frame = build_pnl_chart_frame(rows, currency="USD")
+        long_label = frame.iloc[0]["標籤"]
+        self.assertIn("<br>", long_label)
+        self.assertLess(len(long_label.replace("<br>", "")), len(long_name))
+        self.assertNotIn(long_name, long_label)
+        self.assertIn("LONG", frame.iloc[0]["hover"])
+        duplicate_labels = list(frame["標籤"].iloc[1:3])
+        self.assertEqual(len(set(duplicate_labels)), 2)
+        self.assertTrue(all("騰訊控股" in label for label in duplicate_labels))
+        self.assertIn("AAA.HK", duplicate_labels[0])
+        self.assertIn("BBB.HK", duplicate_labels[1])
+        self.assertEqual(frame.iloc[3]["標籤"], "BARE")
+        self.assertIn("USD -10.00", frame.iloc[0]["hover"])
 
 
 if __name__ == "__main__":

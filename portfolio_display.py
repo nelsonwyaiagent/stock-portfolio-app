@@ -367,6 +367,65 @@ def format_money(amount, currency="HKD", signed=False, decimals=None) -> str:
     return f"{currency} {number}"
 
 
+CHART_AXIS_LINE = 8
+CHART_AXIS_LINES = 2
+
+
+def _chart_source_name(name, ticker: str) -> str:
+    ticker = (ticker or "").strip()
+    cleaned = _clean(name) if isinstance(name, str) else ""
+    if not cleaned or cleaned == ticker:
+        return ticker
+    return cleaned
+
+
+def _wrap_axis_label(text: str, line_length=CHART_AXIS_LINE, max_lines=CHART_AXIS_LINES) -> str:
+    """Keep category labels short. Plotly draws <br> as a line break."""
+    if len(text) <= line_length:
+        return text
+    max_chars = line_length * max_lines
+    if len(text) > max_chars:
+        text = text[: max_chars - 1].rstrip() + "…"
+    return "<br>".join(text[i:i + line_length] for i in range(0, len(text), line_length))
+
+
+def build_pnl_chart_frame(rows, currency="HKD") -> pd.DataFrame:
+    """Bar-chart categories use company names. Hover still includes the ticker."""
+    sources = []
+    for row in rows or []:
+        ticker = str(row.get("ticker") or row.get("股票代號") or "").strip()
+        name = row.get("name") if row.get("name") is not None else row.get("公司名稱")
+        sources.append(
+            (
+                ticker,
+                name,
+                _as_float(row.get("pnl", row.get("盈虧"))),
+                _as_float(row.get("pnl_pct", row.get("%"))),
+            )
+        )
+    bases = [_chart_source_name(name, ticker) for ticker, name, _, _ in sources]
+    counts = {}
+    for base in bases:
+        counts[base] = counts.get(base, 0) + 1
+    records = []
+    for (ticker, name, pnl, pct), base in zip(sources, bases):
+        text = _wrap_axis_label(base)
+        if counts[base] > 1 and ticker and ticker not in text:
+            text = f"{text}<br>{ticker}"
+        full = _chart_source_name(name, ticker)
+        hover_name = full if not ticker or full == ticker else f"{full} ({ticker})"
+        hover = f"{hover_name}<br>{format_money(pnl, currency, signed=True)} ({pct:+.1f}%)"
+        records.append(
+            {
+                "標籤": text,
+                "hover": hover,
+                "盈虧": pnl,
+                "盈虧%": pct,
+            }
+        )
+    return pd.DataFrame(records, columns=["標籤", "hover", "盈虧", "盈虧%"])
+
+
 def _as_float(value, default=0.0) -> float:
     try:
         if value is None or value == "":
