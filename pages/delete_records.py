@@ -6,6 +6,8 @@ import yfinance as yf
 import pandas as pd
 import os
 
+from portfolio_ui import security_profile
+
 URL = os.environ.get("SUPABASE_URL", "")
 KEY = os.environ.get("SUPABASE_KEY", "")
 
@@ -23,25 +25,8 @@ if KEY:
     except:
         pass
 
-# HK stock Chinese names
-HK_NAMES = {
-    "0700.HK": "騰訊控股", "9988.HK": "阿里巴巴", "1810.HK": "小米集團",
-    "9618.HK": "京東集團", "1024.HK": "快手科技", "0880.HK": "中國平安",
-    "3382.HK": "海爾智家", "6690.HK": "海爾智家", "0005.HK": "匯豐控股",
-    "1299.HK": "友邦保險", "0941.HK": "中國移動", "2318.HK": "中國人壽",
-}
-
-# US stock names
-US_NAMES = {
-    "AAPL": "蘋果", "MSFT": "微軟", "GOOGL": "谷歌", "AMZN": "亞馬遜",
-    "TSLA": "特斯拉", "META": "Meta", "NVDA": "輝達", "JPM": "摩根大通",
-    "V": "維薩", "JNJ": "嬌生", "WMT": "沃爾瑪", "PG": "寶潔",
-}
-
 def get_name(t):
-    if '.HK' in t:
-        return HK_NAMES.get(t, t)
-    return US_NAMES.get(t, t)
+    return security_profile(t)["name"]
 
 st.title("🗑️ 刪除交易記錄")
 

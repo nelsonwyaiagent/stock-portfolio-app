@@ -3,6 +3,9 @@ US Stock Portfolio Page - Full Featured
 Similar to main app.py but for US stocks only (USD)
 """
 import streamlit as st
+
+st.set_page_config(page_title="美股組合", page_icon="📈", layout="wide")
+
 import yfinance as yf
 import pandas as pd
 import json
@@ -11,7 +14,15 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="美股組合", page_icon="📈")
+from portfolio_display import rsi_signal_labels
+from portfolio_ui import (
+    format_money,
+    render_balance,
+    render_compact_holdings,
+    render_contributors,
+    render_metric_tiles,
+    security_profile,
+)
 
 # Supabase setup
 URL = os.environ.get("SUPABASE_URL", "")
@@ -31,18 +42,6 @@ if KEY:
     except:
         pass
 
-# US stock names
-US_NAMES = {
-    "AAPL": "蘋果", "MSFT": "微軟", "GOOGL": "谷歌", "AMZN": "亞馬遜",
-    "TSLA": "特斯拉", "META": "Meta", "NVDA": "輝達", "JPM": "摩根大通",
-    "V": "維薩", "JNJ": "嬌生", "WMT": "沃爾瑪", "PG": "寶潔",
-    "MA": "萬事達", "UNH": "聯合健康", "HD": "家得寶", "DIS": "迪士尼",
-    "NFLX": "Netflix", "AMD": "超微", "INTC": "英特爾", "COST": "好市多",
-    "BA": "波音", "CAT": "卡特彼勒", "MMM": "3M", "GE": "GE",
-    "XOM": "埃克森美孚", "CVX": "雪佛龍", "PFE": "輝瑞", "ABBV": "艾伯維",
-    "KO": "可口可樂", "PEP": "百事", "MCD": "麥當勞", "NKE": "Nike",
-}
-
 EXCHANGE_RATE = 7.82  # Fallback
 
 @st.cache_data(ttl=3600)
@@ -53,7 +52,7 @@ def get_exchange_rate():
         return 7.82
 
 def get_us_name(ticker):
-    return US_NAMES.get(ticker, ticker)
+    return security_profile(ticker)["name"]
 
 def get_last_n_months(n=6):
     months = []
@@ -107,7 +106,7 @@ def get_stock_metrics(ticker):
 if 'logged_in' not in st.session_state or not st.session_state.get('logged_in'):
     st.warning("請先登入 / Please login first in main app")
     if st.button("← 返回"):
-        st.switch_page("..")
+        st.switch_page("app.py")
     st.stop()
 
 st.title("🇺🇸 美股組合 / US Stock Portfolio")
@@ -234,94 +233,95 @@ for sym, d in display_holdings.items():
     except:
         pass
 
-# Summary Cards
-st.subheader("📊 組合概要 / Portfolio Summary")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("總值", f"${us_total_val:,.0f}")
-c2.metric("總成本", f"${us_total_cost:,.0f}")
-c3.metric("總盈虧", f"${us_total_val - us_total_cost:,.0f}", f"{((us_total_val - us_total_cost) / us_total_cost * 100) if us_total_cost > 0 else 0:.1f}%")
-c4.metric("持股數", len(display_holdings))
+ui_rows = []
+for ticker, d in display_holdings.items():
+    if "pnl" not in d or "current_value" not in d:
+        continue
+    profile = security_profile(ticker)
+    ui_rows.append({
+        "ticker": ticker,
+        "name": profile["name"],
+        "market": "US",
+        "industry_code": profile["industry_code"],
+        "industry_label": profile["industry_label"],
+        "cost_total": d["qty"] * d["avg_cost"],
+        "market_value": d["current_value"],
+        "pnl": d["pnl"],
+        "pnl_pct": d["pnl_pct"],
+    })
 
-# Holdings Table
-st.subheader("📊 Holdings Detail")
-if display_holdings:
-    rows = []
-    for ticker, d in display_holdings.items():
-        try:
-            # RSI
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="1y")['Close']
-            rsi = calculate_rsi(hist).iloc[-1]
-            
-            if rsi < 30:
-                signal = "🟢 買"
-            elif rsi > 70:
-                signal = "🔴 強賣"
-            elif rsi > 60:
-                signal = "🟡 留意"
-            else:
-                signal = "🟡 持有"
-            
-            # Dividend
-            expected_div = 0
-            div_yield = None
-            try:
-                m = get_stock_metrics(ticker)
-                if m:
-                    fd = m.get("dividend_rate", 0)
-                    if fd:
-                        expected_div = d['qty'] * fd
-                    div_yield = m.get("dividend_yield")
-            except:
-                pass
-            
-            rows.append({
-                "股票代號": ticker,
-                "公司": get_us_name(ticker),
-                "數量": d['qty'],
-                "成本": f"${d['avg_cost']:.2f}",
-                "現值": f"${d['current_value']:.2f}",
-                "盈虧": f"${d['pnl']:.2f}",
-                "%": f"{d['pnl_pct']:.1f}%",
-                "股息率": f"{div_yield:.2f}%" if div_yield else "-",
-                "預期股息": f"${expected_div:.2f}" if expected_div else "-",
-                "RSI": f"{rsi:.0f}",
-                "信號": signal,
-            })
-        except:
-            pass
-    
-    if rows:
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
-else:
-    st.info("無美股數據")
+# Summary. Figures stay in USD; the cost basis above is unchanged.
+st.subheader("📊 組合概要 / Portfolio Summary")
+us_pnl = us_total_val - us_total_cost
+us_pnl_pct = (us_pnl / us_total_cost * 100) if us_total_cost > 0 else 0
+pnl_tone = "neg" if us_pnl < 0 else "pos" if us_pnl > 0 else "neutral"
+render_metric_tiles([
+    {"label": "總值 / Total Value", "value": format_money(us_total_val, "USD"), "sub": "美元 / USD"},
+    {"label": "總成本 / Total Cost", "value": format_money(us_total_cost, "USD"), "sub": "美元 / USD"},
+    {
+        "label": "總盈虧 / Total P&L",
+        "value": format_money(us_pnl, "USD", signed=True),
+        "sub": f"{us_pnl_pct:+.1f}%",
+        "tone": pnl_tone,
+    },
+    {"label": "持股數 / Holdings", "value": str(len(ui_rows)), "sub": "美股 / US stocks"},
+])
+if ui_rows:
+    render_contributors(ui_rows, currency="USD")
+    render_balance(ui_rows, us_total_val, currency="USD")
+
+st.subheader("📊 持股明細 / Holdings Detail")
+render_compact_holdings(
+    ui_rows,
+    us_total_val,
+    currency="USD",
+    sort_key="us_page_holdings_sort",
+    empty_message="無美股數據 / No US holdings",
+)
 
 # Charts
-if display_holdings:
+if ui_rows:
     st.write("---")
-    
-    # Pie Chart
-    chart_data = [{"股票代號": k, "現值": v['current_value']} for k, v in display_holdings.items()]
-    fig_pie = px.pie(chart_data, values='現值', names='股票代號', title='組合分配 / Portfolio Allocation', hole=0.4)
+    chart_data = [
+        {
+            "名稱": row["name"] if row["name"] != row["ticker"] else row["ticker"],
+            "現值": row["market_value"],
+        }
+        for row in ui_rows
+    ]
+    fig_pie = px.pie(chart_data, values="現值", names="名稱", title="組合分配 / Portfolio Allocation", hole=0.4)
     st.plotly_chart(fig_pie, use_container_width=True)
-    
-    # P&L Bar Chart
-    pnl_data = [{"股票代號": k, "盈虧": v['pnl'], "%": v['pnl_pct']} for k, v in display_holdings.items()]
-    fig_bar = px.bar(pnl_data, x='股票代號', y='盈虧', title='損益 / P&L', color='盈虧',
-                   color_continuous_scale=['red', 'gray', 'green'])
+
+    pnl_data = [
+        {"股票代號": row["ticker"], "盈虧": row["pnl"], "%": row["pnl_pct"]}
+        for row in ui_rows
+    ]
+    fig_bar = px.bar(
+        pnl_data,
+        x="股票代號",
+        y="盈虧",
+        title="損益 / P&L",
+        color="盈虧",
+        color_continuous_scale=["red", "gray", "green"],
+    )
     fig_bar.update_traces(
-        text=[f"${x:,.0f}" if pd.notna(x) else "$0" for x in pnl_data['盈虧']],
-        textposition='outside'
+        text=[f"USD {x:,.0f}" if pd.notna(x) else "USD 0" for x in [row["盈虧"] for row in pnl_data]],
+        textposition="outside",
     )
     fig_bar.add_hline(y=0)
     st.plotly_chart(fig_bar, use_container_width=True)
-    
-    # P&L % Chart with labels
-    fig_pct = px.bar(pnl_data, x='股票代號', y='%', title='各股票盈虧 / P&L by Stock (%)',
-                     color='%', color_continuous_scale=['red', 'gray', 'green'])
+
+    fig_pct = px.bar(
+        pnl_data,
+        x="股票代號",
+        y="%",
+        title="各股票盈虧 / P&L by Stock (%)",
+        color="%",
+        color_continuous_scale=["red", "gray", "green"],
+    )
     fig_pct.update_traces(
-        text=[f"{x:.1f}%" if pd.notna(x) else "0%" for x in pnl_data['%']],
-        textposition='outside'
+        text=[f"{x:.1f}%" if pd.notna(x) else "0%" for x in [row["%"] for row in pnl_data]],
+        textposition="outside",
     )
     fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
     fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
@@ -329,33 +329,18 @@ if display_holdings:
     fig_pct.add_hline(y=20, line_dash="dot", line_color="green", annotation_text="Gain 20%")
     st.plotly_chart(fig_pct, use_container_width=True)
 
-# US Stock Industry mapping
-US_INDUSTRY = {
-    "AAPL": "TECH", "MSFT": "TECH", "GOOGL": "TECH", "AMZN": "CONS",
-    "TSLA": "AUTO", "META": "TECH", "NVDA": "TECH", "JPM": "FIN",
-    "V": "FIN", "JNJ": "HLTH", "WMT": "CONS", "PG": "CONS",
-    "MA": "FIN", "UNH": "HLTH", "HD": "CONS", "DIS": "MEDIA",
-    "NFLX": "MEDIA", "AMD": "TECH", "INTC": "TECH", "COST": "CONS",
-    "BA": "INDU", "CAT": "INDU", "MMM": "INDU", "GE": "INDU",
-    "XOM": "ENERGY", "CVX": "ENERGY", "PFE": "HLTH", "ABBV": "HLTH",
-    "KO": "CONS", "PEP": "CONS", "MCD": "CONS", "NKE": "CONS",
-}
-
-def get_us_industry(ticker):
-    return US_INDUSTRY.get(ticker, "OTHER")
-
-# Industry Allocation Chart
-if display_holdings:
     st.write("---")
-    industry_data = []
-    for ticker, d in display_holdings.items():
-        ind = get_us_industry(ticker)
-        industry_data.append({"行業": ind, "現值": d['current_value']})
-    
+    industry_data = [{"行業": row["industry_label"], "現值": row["market_value"]} for row in ui_rows]
     industry_df = pd.DataFrame(industry_data)
     if len(industry_df) > 0:
-        industry_agg = industry_df.groupby('行業')['現值'].sum().reset_index()
-        fig_ind = px.pie(industry_agg, values='現值', names='行業', title='行業分布 / Industry Allocation', hole=0.4)
+        industry_agg = industry_df.groupby("行業")["現值"].sum().reset_index()
+        fig_ind = px.pie(
+            industry_agg,
+            values="現值",
+            names="行業",
+            title="行業分布 / Industry Allocation",
+            hole=0.4,
+        )
         st.plotly_chart(fig_ind, use_container_width=True)
 
 # Stock Detail / Trend Analysis
@@ -429,6 +414,7 @@ def get_90day_price_us(ticker):
 # Stock Analysis
 st.write("---")
 st.subheader("📈 股票分析 / Stock Analysis")
+st.caption("RSI 與信號只在這個研究區顯示，並非持股表上的買賣指令。 / RSI and signals stay in this research section and are not trade instructions.")
 
 # Get ALL US stock symbols from transactions (not just current holdings)
 all_us_symbols = set()
@@ -448,6 +434,9 @@ if all_us_symbols:
             p90 = get_90day_price_us(ticker)
             
             if m:
+                low = m.get("52w_low")
+                high = m.get("52w_high")
+                vol = ((high - low) / low) * 100 if low and high and low > 0 else None
                 row = {
                     '股票代號': ticker,
                     '公司': get_us_name(ticker),
@@ -455,22 +444,32 @@ if all_us_symbols:
                     'P/E': m.get('pe'),
                     '預測P/E': m.get('forward_pe'),
                     '市帳率': m.get('pb_ratio'),
-                    '52W低': m.get('52w_low'),
-                    '52W高': m.get('52w_high'),
+                    '52W低': low,
+                    '52W高': high,
                     '波幅%': vol,
                     'Beta': m.get('beta'),
                     '股息%': m.get('dividend_yield'),
                     '遠期股息': m.get('dividend_rate'),
                     '帳面值': m.get('book_value'),
                 }
-                
-                # Add 90-day data
+
                 if p90:
                     row['90天最高'] = p90.get('highest')
                     row['現價'] = p90.get('current')
                     row['回調%'] = p90.get('drop_pct')
                     row['信號'] = p90.get('signal')
-                
+
+                try:
+                    hist = yf.Ticker(ticker).history(period="3mo")["Close"]
+                    if hist is not None and len(hist) > 0:
+                        rsi_val = calculate_rsi(hist).iloc[-1]
+                        if pd.notna(rsi_val):
+                            signal, _english = rsi_signal_labels(float(rsi_val))
+                            row["RSI"] = round(float(rsi_val), 1)
+                            row["RSI信號"] = signal
+                except Exception:
+                    pass
+
                 analysis_rows.append(row)
         except:
             pass
@@ -557,4 +556,4 @@ if hist_rows:
 # Back button
 st.markdown("---")
 if st.button("← 返回投資組合"):
-    st.switch_page("..")
+    st.switch_page("app.py")
