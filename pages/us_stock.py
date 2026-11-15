@@ -14,7 +14,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-from portfolio_display import rsi_signal_labels
+from portfolio_display import build_pnl_chart_frame, rsi_signal_labels
 from portfolio_ui import (
     format_money,
     render_balance,
@@ -292,37 +292,40 @@ if ui_rows:
     fig_pie = px.pie(chart_data, values="現值", names="名稱", title="組合分配 / Portfolio Allocation", hole=0.4)
     st.plotly_chart(fig_pie, use_container_width=True)
 
-    pnl_data = [
-        {"股票代號": row["ticker"], "盈虧": row["pnl"], "%": row["pnl_pct"]}
-        for row in ui_rows
-    ]
+    chart = build_pnl_chart_frame(ui_rows, currency="USD")
     fig_bar = px.bar(
-        pnl_data,
-        x="股票代號",
+        chart,
+        x="標籤",
         y="盈虧",
         title="損益 / P&L",
         color="盈虧",
         color_continuous_scale=["red", "gray", "green"],
     )
     fig_bar.update_traces(
-        text=[f"USD {x:,.0f}" if pd.notna(x) else "USD 0" for x in [row["盈虧"] for row in pnl_data]],
+        text=[f"USD {x:,.0f}" if pd.notna(x) else "USD 0" for x in chart["盈虧"]],
         textposition="outside",
+        customdata=chart["hover"],
+        hovertemplate="%{customdata}<extra></extra>",
     )
+    fig_bar.update_layout(xaxis_title="公司 / Company", xaxis=dict(automargin=True))
     fig_bar.add_hline(y=0)
     st.plotly_chart(fig_bar, use_container_width=True)
 
     fig_pct = px.bar(
-        pnl_data,
-        x="股票代號",
-        y="%",
+        chart,
+        x="標籤",
+        y="盈虧%",
         title="各股票盈虧 / P&L by Stock (%)",
-        color="%",
+        color="盈虧%",
         color_continuous_scale=["red", "gray", "green"],
     )
     fig_pct.update_traces(
-        text=[f"{x:.1f}%" if pd.notna(x) else "0%" for x in [row["%"] for row in pnl_data]],
+        text=[f"{x:.1f}%" if pd.notna(x) else "0%" for x in chart["盈虧%"]],
         textposition="outside",
+        customdata=chart["hover"],
+        hovertemplate="%{customdata}<extra></extra>",
     )
+    fig_pct.update_layout(xaxis_title="公司 / Company", xaxis=dict(automargin=True))
     fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
     fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
     fig_pct.add_hline(y=10, line_dash="dash", line_color="lightgreen", annotation_text="Gain 10%")

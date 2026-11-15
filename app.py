@@ -13,7 +13,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import date, timedelta
 
-from portfolio_display import rsi_signal_labels
+from portfolio_display import build_pnl_chart_frame, rsi_signal_labels
 from portfolio_ui import (
     format_money,
     render_balance,
@@ -605,39 +605,45 @@ else:
         st.write("---")
         st.subheader("📊 各股票盈虧 / P&L by Stock")
 
-        if len(df) > 0:
-            df = df.copy()
-            df["label"] = df["盈虧"].apply(lambda x: f"HKD {x:,.0f}")
+        chart = build_pnl_chart_frame(rows, currency="HKD")
+        if len(chart) > 0:
+            chart["label"] = chart["盈虧"].apply(lambda x: f"HKD {x:,.0f}")
             fig_bar = px.bar(
-                df,
-                x="股票代號",
+                chart,
+                x="標籤",
                 y="盈虧",
                 title="各股票盈虧 / P&L by Stock",
                 color="盈虧",
                 color_continuous_scale="RdYlGn",
             )
             fig_bar.update_traces(
-                text=df["label"],
+                text=chart["label"],
                 textposition="outside",
-                marker=dict(color=["red" if x < 0 else "green" for x in df["%"]]),
+                customdata=chart["hover"],
+                hovertemplate="%{customdata}<extra></extra>",
+                marker=dict(color=["red" if x < 0 else "green" for x in chart["盈虧%"]]),
             )
+            fig_bar.update_layout(xaxis_title="公司 / Company", xaxis=dict(automargin=True))
             fig_bar.add_hline(y=0, line_dash="dash", line_color="gray")
             st.plotly_chart(fig_bar, use_container_width=True)
 
-            df["label_pct"] = df["%"].apply(lambda x: f"{x:.1f}%")
+            chart["label_pct"] = chart["盈虧%"].apply(lambda x: f"{x:.1f}%")
             fig_pct = px.bar(
-                df,
-                x="股票代號",
-                y="%",
+                chart,
+                x="標籤",
+                y="盈虧%",
                 title="各股票盈虧 / P&L by Stock (%)",
-                color="%",
+                color="盈虧%",
                 color_continuous_scale="RdYlGn",
             )
             fig_pct.update_traces(
-                text=df["label_pct"],
+                text=chart["label_pct"],
                 textposition="outside",
-                marker=dict(color=["red" if x < 0 else "green" for x in df["%"]]),
+                customdata=chart["hover"],
+                hovertemplate="%{customdata}<extra></extra>",
+                marker=dict(color=["red" if x < 0 else "green" for x in chart["盈虧%"]]),
             )
+            fig_pct.update_layout(xaxis_title="公司 / Company", xaxis=dict(automargin=True))
             fig_pct.add_hline(y=-10, line_dash="dash", line_color="orange", annotation_text="Loss 10%")
             fig_pct.add_hline(y=-15, line_dash="dot", line_color="red", annotation_text="Loss 15%")
             fig_pct.add_hline(y=-20, line_dash="dot", line_color="darkred", annotation_text="Loss 20%")
