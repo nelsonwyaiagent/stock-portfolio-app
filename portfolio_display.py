@@ -208,7 +208,7 @@ INDUSTRY_COLORS = {
 FALLBACK_COLORS = ["#4C78A8", "#F58518", "#54A24B", "#E45756", "#72B7B2", "#B279A2", "#EECA3B"]
 
 SINGLE_NAME_WARN_PCT = 15.0
-COMPACT_COLUMNS = ["代號", "公司", "權重%", "成本", "市值", "盈虧$", "盈虧%"]
+COMPACT_COLUMNS = ["代號", "公司", "權重%", "成本", "市值", "盈虧$", "盈虧%", "今年股息", "含息盈虧", "含息%"]
 
 CONTRIBUTOR_NOTE = (
     "按未實現盈虧金額排列，反映目前持倉對組合盈虧的貢獻，並非買賣建議。"
@@ -221,8 +221,12 @@ BALANCE_NOTE = (
 HOLDINGS_NOTE = (
     "金額見欄位單位。成本為持倉成本（數量 × 平均成本），市值 − 成本 = 盈虧。"
     "權重以組合總市值為分母。綠色為盈利，紅色為虧損。"
+    "盈虧$ 與盈虧% 只計股價，不含股息。今年股息是按除淨日持股估算的已收現金；"
+    "含息盈虧 = 盈虧$ + 今年股息。"
     " / Cost is position cost (quantity × average cost). "
-    "Weight uses total portfolio value. Green is a gain, red is a loss."
+    "Weight uses total portfolio value. Green is a gain, red is a loss. "
+    "Price P&L excludes dividends. Div YTD is estimated cash from shares held before each ex-date; "
+    "total return adds that cash to price P&L."
 )
 
 SORT_CHOICES = (
@@ -450,15 +454,24 @@ def build_compact_frame(rows, total_value, sort_by="pnl") -> pd.DataFrame:
         if not ticker:
             continue
         market_value = _as_float(row.get("market_value", row.get("現值")))
+        price_pnl = _as_float(row.get("pnl", row.get("盈虧")))
+        price_pct = _as_float(row.get("pnl_pct", row.get("%")))
+        dividend_ytd = _as_float(row.get("div_ytd"))
+        cost_total = _as_float(row.get("cost_total"))
+        total_return = price_pnl + dividend_ytd
+        total_pct = (total_return / cost_total * 100) if cost_total else 0.0
         records.append(
             {
                 "代號": ticker,
                 "公司": row.get("name") or row.get("公司名稱") or ticker,
                 "權重%": _weight(market_value, total_value),
-                "成本": _as_float(row.get("cost_total")),
+                "成本": cost_total,
                 "市值": market_value,
-                "盈虧$": _as_float(row.get("pnl", row.get("盈虧"))),
-                "盈虧%": _as_float(row.get("pnl_pct", row.get("%"))),
+                "盈虧$": price_pnl,
+                "盈虧%": price_pct,
+                "今年股息": dividend_ytd,
+                "含息盈虧": total_return,
+                "含息%": total_pct,
             }
         )
     frame = pd.DataFrame(records, columns=COMPACT_COLUMNS)
@@ -503,7 +516,7 @@ def compact_styler(frame: pd.DataFrame, currency="HKD"):
     decimals = 0 if currency == "HKD" else 2
     number = f"{{:,.{decimals}f}}"
     signed = f"{{:+,.{decimals}f}}"
-    styler = frame.style.map(_pnl_css, subset=["盈虧$", "盈虧%"])
+    styler = frame.style.map(_pnl_css, subset=["盈虧$", "盈虧%", "今年股息", "含息盈虧", "含息%"])
     styler = styler.format(
         {
             "權重%": "{:.1f}%",
@@ -511,6 +524,9 @@ def compact_styler(frame: pd.DataFrame, currency="HKD"):
             "市值": number,
             "盈虧$": signed,
             "盈虧%": "{:+.1f}%",
+            "今年股息": signed,
+            "含息盈虧": signed,
+            "含息%": "{:+.1f}%",
         }
     )
     return styler.hide(axis="index")
@@ -533,6 +549,31 @@ def contributor_lists(rows, limit=3):
         key=lambda row: (-_as_float(row.get("pnl")), str(row.get("ticker"))),
     )[:limit]
     return winners, losers
+
+
+def total_return_ranking(rows, limit=3):
+    """Highest price P&L plus year-to-date dividends. Does not replace price ranking."""
+    ranked = []
+    for row in rows or []:
+        ticker = row.get("ticker") or row.get("股票代號")
+        if not ticker:
+            continue
+        price_pnl = _as_float(row.get("pnl", row.get("盈虧")))
+        dividend_ytd = _as_float(row.get("div_ytd"))
+        cost = _as_float(row.get("cost_total"))
+        total = price_pnl + dividend_ytd
+        ranked.append(
+            {
+                "ticker": ticker,
+                "name": row.get("name") or row.get("公司名稱") or ticker,
+                "pnl": price_pnl,
+                "div_ytd": dividend_ytd,
+                "total_return": total,
+                "total_return_pct": (total / cost * 100) if cost else 0.0,
+            }
+        )
+    ranked.sort(key=lambda item: (-item["total_return"], str(item["ticker"])))
+    return ranked[:limit]
 
 
 def balance_snapshot(rows, total_value, warn_pct=SINGLE_NAME_WARN_PCT) -> dict:

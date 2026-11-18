@@ -15,13 +15,18 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 from portfolio_display import build_pnl_chart_frame, rsi_signal_labels
+from portfolio_dividends import apply_ytd, hong_kong_today
 from portfolio_ui import (
+    collect_dividend_report,
     format_money,
     render_balance,
     render_compact_holdings,
     render_contributors,
+    render_dividend_income,
+    render_dividend_leaders,
     render_metric_tiles,
     security_profile,
+    ytd_metric,
 )
 
 # Supabase setup
@@ -191,9 +196,10 @@ if supabase:
     except Exception as e:
         st.error(f"Error: {e}")
 
-# Holdings calculation
+# Holdings calculation. The dated ledger is only used for dividend entitlement.
 holdings = {}
 us_total_val, us_total_cost = 0, 0
+ledger = []
 
 if supabase:
     try:
@@ -214,6 +220,12 @@ if supabase:
                     holdings[sym]['qty'] += qty
                 else:
                     holdings[sym]['qty'] -= qty
+                ledger.append({
+                    "symbol": sym,
+                    "transaction_type": row["transaction_type"],
+                    "quantity": qty,
+                    "transaction_date": row["transaction_date"],
+                })
     except Exception as e:
         st.error(f"Error: {e}")
 
@@ -250,6 +262,32 @@ for ticker, d in display_holdings.items():
         "pnl_pct": d["pnl_pct"],
     })
 
+dividend_names = {row["ticker"]: row["name"] for row in ui_rows}
+for tx in ledger:
+    sym = str(tx.get("symbol") or "").strip().upper()
+    if sym and sym not in dividend_names:
+        dividend_names[sym] = security_profile(sym)["name"]
+if ledger:
+    with st.spinner("正在估算今年股息…"):
+        dividend_report = collect_dividend_report(
+            ledger,
+            dividend_names,
+            today=hong_kong_today(),
+            default_currency="USD",
+            report_currency="USD",
+            spot_fx=EXCHANGE_RATE,
+        )
+else:
+    dividend_report = collect_dividend_report(
+        ledger,
+        dividend_names,
+        today=hong_kong_today(),
+        default_currency="USD",
+        report_currency="USD",
+        spot_fx=EXCHANGE_RATE,
+    )
+apply_ytd(ui_rows, dividend_report)
+
 # Summary. Figures stay in USD; the cost basis above is unchanged.
 st.subheader("📊 組合概要 / Portfolio Summary")
 us_pnl = us_total_val - us_total_cost
@@ -264,10 +302,14 @@ render_metric_tiles([
         "sub": f"{us_pnl_pct:+.1f}%",
         "tone": pnl_tone,
     },
+    ytd_metric(dividend_report.get("total_ytd"), "USD"),
     {"label": "持股數 / Holdings", "value": str(len(ui_rows)), "sub": "美股 / US stocks"},
 ])
 if ui_rows:
     render_contributors(ui_rows, currency="USD")
+if ui_rows or dividend_report.get("rows"):
+    render_dividend_leaders(dividend_report, ui_rows, currency="USD")
+if ui_rows:
     render_balance(ui_rows, us_total_val, currency="USD")
 
 st.subheader("📊 持股明細 / Holdings Detail")
@@ -278,6 +320,8 @@ render_compact_holdings(
     sort_key="us_page_holdings_sort",
     empty_message="無美股數據 / No US holdings",
 )
+if ui_rows or dividend_report.get("rows"):
+    render_dividend_income(dividend_report, currency="USD")
 
 # Charts
 if ui_rows:
@@ -417,7 +461,12 @@ def get_90day_price_us(ticker):
 # Stock Analysis
 st.write("---")
 st.subheader("📈 股票分析 / Stock Analysis")
-st.caption("RSI 與信號只在這個研究區顯示，並非持股表上的買賣指令。 / RSI and signals stay in this research section and are not trade instructions.")
+st.caption(
+    "RSI 與信號只在這個研究區顯示，並非持股表上的買賣指令。"
+    "「預期年度股息」是 Yahoo dividendRate 的遠期年度估計（每股），不是今年已收現金。"
+    " / RSI and signals stay in this research section and are not trade instructions. "
+    "Expected annual dividend is Yahoo's forward dividendRate per share, not cash received this year."
+)
 
 # Get ALL US stock symbols from transactions (not just current holdings)
 all_us_symbols = set()
@@ -452,7 +501,7 @@ if all_us_symbols:
                     '波幅%': vol,
                     'Beta': m.get('beta'),
                     '股息%': m.get('dividend_yield'),
-                    '遠期股息': m.get('dividend_rate'),
+                    '預期年度股息': m.get('dividend_rate'),
                     '帳面值': m.get('book_value'),
                 }
 

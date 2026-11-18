@@ -14,13 +14,18 @@ import plotly.graph_objects as go
 from datetime import date, timedelta
 
 from portfolio_display import build_pnl_chart_frame, rsi_signal_labels
+from portfolio_dividends import apply_ytd, hong_kong_today
 from portfolio_ui import (
+    collect_dividend_report,
     format_money,
     render_balance,
     render_compact_holdings,
     render_contributors,
+    render_dividend_income,
+    render_dividend_leaders,
     render_metric_tiles,
     security_profile,
+    ytd_metric,
 )
 
 URL = os.environ.get("SUPABASE_URL", "")
@@ -318,6 +323,7 @@ else:
     st.header("📋 交易記錄")
     holdings = {}
     tx_list = []
+    ledger = []
     
     if supabase:
         try:
@@ -364,6 +370,12 @@ else:
                         holdings[sym]['qty'] += row['quantity']
                     else:
                         holdings[sym]['qty'] -= row['quantity']
+                    ledger.append({
+                        "symbol": sym,
+                        "transaction_type": row["transaction_type"],
+                        "quantity": row["quantity"],
+                        "transaction_date": row["transaction_date"],
+                    })
             
             # Avg cost in HKD
             for sym in holdings:
@@ -457,16 +469,6 @@ else:
                     pnl = val_hkd - (qty * cost_hkd)
                     pct = (pnl/(qty*cost_hkd)*100) if cost_hkd else 0
 
-                    expected_div = 0
-                    try:
-                        m = get_stock_metrics(ticker)
-                        if m:
-                            fd = m.get("dividend_rate", 0)
-                            if fd:
-                                expected_div = qty * fd
-                    except Exception:
-                        pass
-
                     row_data = {
                         "ticker": ticker,
                         "name": company,
@@ -486,7 +488,6 @@ else:
                         "現值": val_hkd,
                         "盈虧": pnl,
                         "%": pct,
-                        "預期股息": expected_div,
                     }
                     
                     # Append to separate list based on currency
@@ -505,16 +506,48 @@ else:
     combined_val = us_total_val + hk_total_val
     combined_cost = us_total_cost + hk_total_cost
 
-    # Display summary
-    if us_rows or hk_rows:
+    dividend_names = {}
+    dividend_currencies = {}
+    for row in hk_rows + us_rows:
+        dividend_names[row["ticker"]] = row["name"]
+        dividend_currencies[row["ticker"]] = row.get("貨幣") or "HKD"
+    for tx in ledger:
+        sym = str(tx.get("symbol") or "").strip().upper()
+        if sym and sym not in dividend_names:
+            dividend_names[sym] = security_profile(sym)["name"]
+    if ledger:
+        with st.spinner("正在估算今年股息…"):
+            dividend_report = collect_dividend_report(
+                ledger,
+                dividend_names,
+                today=hong_kong_today(),
+                default_currency="HKD",
+                report_currency="HKD",
+                spot_fx=EXCHANGE_RATE,
+                currency_by_symbol=dividend_currencies,
+            )
+    else:
+        dividend_report = collect_dividend_report(
+            ledger,
+            dividend_names,
+            today=hong_kong_today(),
+            default_currency="HKD",
+            report_currency="HKD",
+            spot_fx=EXCHANGE_RATE,
+            currency_by_symbol=dividend_currencies,
+        )
+    apply_ytd(hk_rows, dividend_report)
+    apply_ytd(us_rows, dividend_report)
+
+    # Display summary. Open holdings and sold names that still paid this year.
+    has_holdings = bool(us_rows or hk_rows)
+    if has_holdings or dividend_report.get("rows"):
         # Combined totals in HKD
         combined_val = us_total_val + hk_total_val
         combined_cost = us_total_cost + hk_total_cost
         grand_total_pnl = combined_val - combined_cost
         grand_total_pnl_percent = (grand_total_pnl / combined_cost * 100) if combined_cost > 0 else 0
-        
-        # Calculate total dividend
-        dividend_total = sum(r.get("預期股息", 0) for r in hk_rows + us_rows if r.get("預期股息"))
+
         pnl_tone = "neg" if grand_total_pnl < 0 else "pos" if grand_total_pnl > 0 else "neutral"
         render_metric_tiles([
             {
@@ -533,11 +566,7 @@ else:
                 "sub": f"{grand_total_pnl_percent:+.1f}%",
                 "tone": pnl_tone,
             },
-            {
-                "label": "總股息 / Total Div",
-                "value": format_money(dividend_total, "HKD"),
-                "sub": "預期 / expected",
-            },
+            ytd_metric(dividend_report.get("total_ytd"), "HKD"),
             {
                 "label": "總持股 / Holdings",
                 "value": str(len(hk_rows) + len(us_rows)),
@@ -546,8 +575,11 @@ else:
         ])
 
         all_rows = hk_rows + us_rows
-        render_contributors(all_rows, currency="HKD")
-        render_balance(all_rows, combined_val, currency="HKD")
+        if has_holdings:
+            render_contributors(all_rows, currency="HKD")
+        render_dividend_leaders(dividend_report, all_rows, currency="HKD")
+        if has_holdings:
+            render_balance(all_rows, combined_val, currency="HKD")
 
         st.markdown("---")
         st.subheader("📊 持股明細 / Holdings Detail")
@@ -567,6 +599,8 @@ else:
             sort_key="main_us_holdings_sort",
             empty_message="無美股數據 / No US holdings",
         )
+
+        render_dividend_income(dividend_report, currency="HKD")
 
         rows = all_rows
         df = pd.DataFrame(rows) if rows else pd.DataFrame()
@@ -602,8 +636,9 @@ else:
                 )
                 st.plotly_chart(fig2, use_container_width=True)
 
-        st.write("---")
-        st.subheader("📊 各股票盈虧 / P&L by Stock")
+        if rows:
+            st.write("---")
+            st.subheader("📊 各股票盈虧 / P&L by Stock")
 
         chart = build_pnl_chart_frame(rows, currency="HKD")
         if len(chart) > 0:
@@ -704,7 +739,12 @@ if all_tickers:
     # ===== STOCK ANALYSIS =====
     st.write("---")
     st.subheader("📈 股票分析 / Stock Analysis")
-    st.caption("RSI 與信號只在這個研究區顯示，並非持股表上的買賣指令。 / RSI and signals stay in this research section and are not trade instructions.")
+    st.caption(
+        "RSI 與信號只在這個研究區顯示，並非持股表上的買賣指令。"
+        "「預期年度股息」是 Yahoo dividendRate 的遠期年度估計（每股），不是今年已收現金。"
+        " / RSI and signals stay in this research section and are not trade instructions. "
+        "Expected annual dividend is Yahoo's forward dividendRate per share, not cash received this year."
+    )
 
     # Fetch metrics for each holding - include all symbols even if qty is 0
     analysis_rows = []
@@ -728,7 +768,7 @@ if all_tickers:
                     '波幅%': metrics.get('volatility'),
                     'Beta': metrics.get('beta'),
                     '股息%': metrics.get('dividend_yield'),
-                    '遠期股息': metrics.get('dividend_rate'),
+                    '預期年度股息': metrics.get('dividend_rate'),
                     '收益率': metrics.get('dividend_five_year'),
                     '帳面值': metrics.get('book_value'),
                 }
